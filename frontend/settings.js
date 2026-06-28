@@ -148,6 +148,14 @@ const SignalySettings = {
 
   // ── Notification settings ──────────────────────────────────────────────────
 
+  setNotifActionBtn(btn, { icon, label }) {
+    if (!btn) return
+    const iconEl = btn.querySelector('.notif-btn-icon')
+    const labelEl = btn.querySelector('.notif-btn-label')
+    if (iconEl) iconEl.className = `notif-btn-icon notif-btn-icon--${icon}`
+    if (labelEl) labelEl.textContent = label
+  },
+
   setupNotifSection() {
     const section = document.getElementById('settings-notif-section')
     if (!section) return
@@ -285,9 +293,12 @@ const SignalySettings = {
     enableBtn.hidden = permission !== 'default'
     if (permission === 'granted' && canPush) {
       reregisterBtn.hidden = false
-      reregisterBtn.textContent = pushSubscribed ? '再登録' : '有効'
+      this.setNotifActionBtn(reregisterBtn, {
+        icon: pushSubscribed ? 'refresh' : 'on',
+        label: pushSubscribed ? '再登録' : '有効',
+      })
       disableBtn.hidden = !pushSubscribed
-      disableBtn.textContent = '無効'
+      this.setNotifActionBtn(disableBtn, { icon: 'off', label: '無効' })
     } else {
       reregisterBtn.hidden = true
       disableBtn.hidden = true
