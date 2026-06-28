@@ -1,8 +1,17 @@
 'use strict'
 
-const APP_VERSION = '1.0.9'
+const APP_VERSION = '1.1.0'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.1.0',
+    date: '2026-06-29',
+    changes: [
+      '設定画面から通知の動作をテストできるようになった',
+      'チャンネルを開いたとき、未読分が新着として表示されるようになった',
+      '通知設定ボタンの見た目を改善（アイコン付き・コンパクトな配置）',
+    ],
+  },
   {
     version: '1.0.9',
     date: '2026-06-29',
