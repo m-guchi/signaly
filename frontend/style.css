@@ -96,7 +96,40 @@ html, body {
 #channel-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 4px 0 8px;
+}
+
+.channel-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 4px;
+  flex-shrink: 0;
+}
+
+.channel-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-subtle);
+}
+
+.add-channel-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s, background 0.15s;
+}
+
+.add-channel-btn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
 }
 
 .channel-item {
@@ -172,14 +205,46 @@ html, body {
 #feed-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 14px 20px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   gap: 12px;
 }
 
+.sidebar-toggle {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+
+.sidebar-toggle:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 40;
+}
+
+.sidebar-backdrop.visible {
+  display: block;
+}
+
 .channel-title {
+  flex: 1;
+  min-width: 0;
   font-size: 15px;
   font-weight: 600;
   color: var(--text);
@@ -425,6 +490,109 @@ html, body {
   padding: 12px 20px 20px;
 }
 
+/* ── Create channel dialog ─────────────────── */
+
+.create-channel-panel {
+  max-width: 400px;
+}
+
+.create-channel-body {
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.create-channel-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.create-channel-input {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.create-channel-input:focus {
+  border-color: var(--accent);
+}
+
+.create-channel-error {
+  font-size: 12px;
+  color: var(--error);
+}
+
+.create-channel-submit {
+  margin-top: 4px;
+  padding: 8px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.create-channel-submit:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.create-channel-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.create-channel-success-text {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.create-channel-success-text strong {
+  color: var(--text);
+}
+
+.create-channel-webhook-row {
+  display: flex;
+  gap: 8px;
+}
+
+.create-channel-webhook-input {
+  flex: 1;
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+}
+
+.create-channel-copy {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.create-channel-copy:hover {
+  background: var(--border);
+}
+
+.create-channel-hint {
+  font-size: 11px;
+  color: var(--text-subtle);
+}
+
 .cl-entry {
   padding-bottom: 20px;
 }
@@ -543,4 +711,35 @@ html, body {
 .logout-btn:hover {
   color: var(--error);
   background: var(--surface-hover);
+}
+
+/* ── Mobile sidebar ─────────────────────────── */
+
+@media (max-width: 767px) {
+  #sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: none;
+  }
+
+  #sidebar.sidebar--open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+  }
+
+  .sidebar-toggle {
+    display: flex;
+  }
+}
+
+@media (min-width: 768px) {
+  #sidebar {
+    position: relative;
+    transform: none;
+  }
 }

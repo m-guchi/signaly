@@ -14,6 +14,52 @@ const emptyState = document.getElementById('empty-state')
 const channelTitle = document.getElementById('channel-title')
 const statusEl = document.getElementById('status')
 const notifBtn = document.getElementById('notif-btn')
+const sidebar = document.getElementById('sidebar')
+const sidebarToggle = document.getElementById('sidebar-toggle')
+const sidebarBackdrop = document.getElementById('sidebar-backdrop')
+
+const mobileSidebarMq = window.matchMedia('(max-width: 767px)')
+
+function isMobileSidebar() {
+  return mobileSidebarMq.matches
+}
+
+function setSidebarOpen(open) {
+  if (!isMobileSidebar()) {
+    sidebar.classList.remove('sidebar--open')
+    sidebarBackdrop.classList.remove('visible')
+    sidebarBackdrop.hidden = true
+    sidebarBackdrop.setAttribute('aria-hidden', 'true')
+    sidebarToggle?.setAttribute('aria-expanded', 'false')
+    sidebarToggle?.setAttribute('aria-label', 'メニューを開く')
+    return
+  }
+
+  sidebar.classList.toggle('sidebar--open', open)
+  sidebarBackdrop.classList.toggle('visible', open)
+  sidebarBackdrop.hidden = !open
+  sidebarBackdrop.setAttribute('aria-hidden', open ? 'false' : 'true')
+  sidebarToggle?.setAttribute('aria-expanded', open ? 'true' : 'false')
+  sidebarToggle?.setAttribute('aria-label', open ? 'メニューを閉じる' : 'メニューを開く')
+}
+
+function closeSidebar() {
+  setSidebarOpen(false)
+}
+
+sidebarToggle?.addEventListener('click', () => {
+  setSidebarOpen(!sidebar.classList.contains('sidebar--open'))
+})
+
+sidebarBackdrop?.addEventListener('click', closeSidebar)
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeSidebar()
+})
+
+mobileSidebarMq.addEventListener('change', () => {
+  if (!isMobileSidebar()) closeSidebar()
+})
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -113,14 +159,18 @@ function prependCard(entry) {
 
 // ── Channel list ─────────────────────────────────────────────────────────────
 
-function renderChannels(channels) {
+function renderChannels(channels, selectName = null) {
   channelList.innerHTML = ''
-  if (!channels.length) {
+  const names = channels.map(c => (typeof c === 'string' ? c : c.name))
+
+  if (!names.length) {
     channelList.innerHTML = '<div class="loading-text">チャンネルなし</div>'
+    activeChannel = null
+    channelTitle.textContent = 'チャンネルを選択'
     return
   }
 
-  for (const name of channels) {
+  for (const name of names) {
     const btn = document.createElement('button')
     btn.className = 'channel-item'
     btn.dataset.channel = name
@@ -129,8 +179,17 @@ function renderChannels(channels) {
     channelList.appendChild(btn)
   }
 
-  // 最初のチャンネルを自動選択
-  selectChannel(channels[0])
+  const target = selectName
+    ?? (activeChannel && names.includes(activeChannel) ? null : names[0])
+
+  if (target) {
+    selectChannel(target)
+  } else if (activeChannel) {
+    channelList.querySelectorAll('.channel-item').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.channel === activeChannel)
+    })
+    updateBadge(activeChannel)
+  }
 }
 
 function updateBadge(channelName) {
@@ -173,6 +232,8 @@ async function selectChannel(name) {
 
   // SSE 接続を張り替える
   connectSSE(name)
+
+  closeSidebar()
 }
 
 async function loadHistory(channelName) {
@@ -337,6 +398,109 @@ changelogDialog?.addEventListener('click', (e) => {
   if (e.target === changelogDialog) changelogDialog.classList.remove('open')
 })
 
+// ── Create channel ────────────────────────────────────────────────────────────
+
+const addChannelBtn = document.getElementById('add-channel-btn')
+const createChannelDialog = document.getElementById('create-channel-dialog')
+const createChannelForm = document.getElementById('create-channel-form')
+const createChannelName = document.getElementById('create-channel-name')
+const createChannelError = document.getElementById('create-channel-error')
+const createChannelClose = document.getElementById('create-channel-close')
+const createChannelSuccess = document.getElementById('create-channel-success')
+const createChannelTitle = document.getElementById('create-channel-title')
+const createChannelSuccessName = document.getElementById('create-channel-success-name')
+const createChannelWebhook = document.getElementById('create-channel-webhook')
+const createChannelCopy = document.getElementById('create-channel-copy')
+const createChannelDone = document.getElementById('create-channel-done')
+
+function resetCreateChannelDialog() {
+  createChannelForm.hidden = false
+  createChannelSuccess.hidden = true
+  createChannelTitle.textContent = 'チャンネルを作成'
+  createChannelName.value = ''
+  createChannelError.hidden = true
+  createChannelError.textContent = ''
+}
+
+function openCreateChannelDialog() {
+  resetCreateChannelDialog()
+  createChannelDialog?.classList.add('open')
+  createChannelName?.focus()
+}
+
+function closeCreateChannelDialog() {
+  createChannelDialog?.classList.remove('open')
+}
+
+addChannelBtn?.addEventListener('click', openCreateChannelDialog)
+
+createChannelClose?.addEventListener('click', closeCreateChannelDialog)
+
+createChannelDone?.addEventListener('click', closeCreateChannelDialog)
+
+createChannelDialog?.addEventListener('click', (e) => {
+  if (e.target === createChannelDialog) closeCreateChannelDialog()
+})
+
+createChannelForm?.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const name = createChannelName.value.trim()
+  if (!name) return
+
+  createChannelError.hidden = true
+  const submitBtn = createChannelForm.querySelector('.create-channel-submit')
+  submitBtn.disabled = true
+
+  try {
+    const res = await fetch('api/channels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    const data = await res.json().catch(() => ({}))
+
+    if (!res.ok) {
+      let message = data.detail
+      if (Array.isArray(message)) {
+        message = message.map(e => e.msg).join(', ')
+      } else if (typeof message !== 'string') {
+        message = `作成に失敗しました (${res.status})`
+      }
+      createChannelError.textContent = message
+      createChannelError.hidden = false
+      return
+    }
+
+    createChannelForm.hidden = true
+    createChannelSuccess.hidden = false
+    createChannelTitle.textContent = 'チャンネルを作成しました'
+    createChannelSuccessName.textContent = data.name
+    createChannelWebhook.value = data.webhook_url
+
+    const listRes = await fetch('api/channels')
+    if (listRes.ok) {
+      const { channels } = await listRes.json()
+      renderChannels(channels, data.name)
+    }
+  } catch {
+    createChannelError.textContent = 'ネットワークエラーが発生しました'
+    createChannelError.hidden = false
+  } finally {
+    submitBtn.disabled = false
+  }
+})
+
+createChannelCopy?.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(createChannelWebhook.value)
+    createChannelCopy.textContent = 'コピー済み'
+    setTimeout(() => { createChannelCopy.textContent = 'コピー' }, 2000)
+  } catch {
+    createChannelWebhook.select()
+    document.execCommand('copy')
+  }
+})
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 const loginOverlay = document.getElementById('login-overlay')
@@ -389,6 +553,7 @@ async function init() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const { channels } = await res.json()
     addLogoutButton()
+    addChannelBtn.hidden = false
     renderChannels(channels)
   } catch (err) {
     clearTimeout(timeout)

@@ -15,7 +15,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from database import Notification, get_session, init_db
 
@@ -71,6 +71,15 @@ def load_channels() -> Dict[str, str]:
     if not CHANNELS_FILE.exists():
         return {}
     return json.loads(CHANNELS_FILE.read_text(encoding="utf-8"))
+
+
+def save_channels(channels: Dict[str, str]) -> None:
+    tmp = CHANNELS_FILE.with_suffix(".json.tmp")
+    tmp.write_text(
+        json.dumps(channels, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    tmp.replace(CHANNELS_FILE)
 
 
 def _save_notification(entry: dict) -> None:
@@ -267,10 +276,48 @@ async def receive_webhook(channel_id: str, payload: WebhookPayload):
 
 # ── API（要認証）─────────────────────────────────────────────────────────────
 
+class CreateChannelRequest(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("チャンネル名を入力してください")
+        if len(v) > 100:
+            raise ValueError("チャンネル名は100文字以内にしてください")
+        return v
+
+
 @app.get("/api/channels")
 async def get_channels(email: str = Depends(require_auth)):
     channels = load_channels()
-    return {"channels": sorted(set(channels.values()))}
+    items = [{"id": cid, "name": name} for cid, name in channels.items()]
+    items.sort(key=lambda c: c["name"])
+    return {"channels": items}
+
+
+@app.post("/api/channels")
+async def create_channel(
+    request: Request,
+    body: CreateChannelRequest,
+    email: str = Depends(require_auth),
+):
+    channels = load_channels()
+    if body.name in channels.values():
+        raise HTTPException(status_code=409, detail="同じ名前のチャンネルが既に存在します")
+
+    channel_id = secrets.token_urlsafe(16)
+    channels[channel_id] = body.name
+    await asyncio.to_thread(save_channels, channels)
+
+    webhook_url = f"{request.base_url}webhook/{channel_id}"
+    return {
+        "id": channel_id,
+        "name": body.name,
+        "webhook_url": str(webhook_url),
+    }
 
 
 @app.get("/api/history/{channel_name}")

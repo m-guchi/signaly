@@ -14,6 +14,7 @@
 </head>
 <body>
   <div id="app">
+    <div id="sidebar-backdrop" class="sidebar-backdrop" hidden aria-hidden="true"></div>
     <aside id="sidebar">
       <div class="sidebar-header">
         <span class="logo">
@@ -29,6 +30,15 @@
           </svg>
         </button>
       </div>
+      <div class="channel-section-header">
+        <span class="channel-section-label">チャンネル</span>
+        <button id="add-channel-btn" class="add-channel-btn" type="button" title="チャンネルを作成" aria-label="チャンネルを作成" hidden>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+      </div>
       <nav id="channel-list" aria-label="チャンネル一覧">
         <div class="loading-text">読み込み中…</div>
       </nav>
@@ -39,12 +49,44 @@
 
     <main id="main">
       <header id="feed-header">
+        <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="メニューを開く" aria-expanded="false" aria-controls="sidebar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
         <h1 id="channel-title" class="channel-title">チャンネルを選択</h1>
         <span id="status" class="status status--disconnected" title="接続状態">●</span>
       </header>
       <div id="feed" role="log" aria-live="polite" aria-relevant="additions"></div>
       <div id="empty-state" class="empty-state" hidden>通知はまだありません</div>
     </main>
+  </div>
+
+  <div id="create-channel-dialog" class="changelog-dialog" role="dialog" aria-modal="true" aria-label="チャンネルを作成">
+    <div class="changelog-panel create-channel-panel">
+      <div class="changelog-header">
+        <h2 class="changelog-title" id="create-channel-title">チャンネルを作成</h2>
+        <button id="create-channel-close" class="changelog-close" aria-label="閉じる">✕</button>
+      </div>
+      <form id="create-channel-form" class="create-channel-body">
+        <label class="create-channel-label" for="create-channel-name">チャンネル名</label>
+        <input id="create-channel-name" class="create-channel-input" type="text" maxlength="100" placeholder="general" required autocomplete="off">
+        <p id="create-channel-error" class="create-channel-error" hidden></p>
+        <button type="submit" class="create-channel-submit">作成</button>
+      </form>
+      <div id="create-channel-success" class="create-channel-body" hidden>
+        <p class="create-channel-success-text">チャンネル <strong id="create-channel-success-name"></strong> を作成しました。</p>
+        <label class="create-channel-label" for="create-channel-webhook">Webhook URL</label>
+        <div class="create-channel-webhook-row">
+          <input id="create-channel-webhook" class="create-channel-input create-channel-webhook-input" type="text" readonly>
+          <button id="create-channel-copy" type="button" class="create-channel-copy" title="コピー">コピー</button>
+        </div>
+        <p class="create-channel-hint">この URL に POST すると通知が届きます。</p>
+        <button id="create-channel-done" type="button" class="create-channel-submit">完了</button>
+      </div>
+    </div>
   </div>
 
   <div id="changelog-dialog" class="changelog-dialog" role="dialog" aria-modal="true" aria-label="更新履歴">
