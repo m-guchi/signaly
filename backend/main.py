@@ -28,7 +28,14 @@ from notification_prefs import (
     set_channel_notification_setting,
     set_group_notification_setting,
 )
-from push import push_configured, send_push_notifications, send_test_push_to_user, validate_push_config
+from push import (
+    get_application_server_key,
+    push_configured,
+    push_vapid_healthy,
+    send_push_notifications,
+    send_test_push_to_user,
+    validate_push_config,
+)
 from webhook import parse_webhook_payload
 
 BASE_DIR = Path(__file__).parent
@@ -978,7 +985,14 @@ class PushSubscribeBody(BaseModel):
 async def push_vapid_public_key(email: str = Depends(auth.require_auth)):
     if not push_configured():
         raise HTTPException(status_code=503, detail="Web Push が設定されていません")
-    return {"publicKey": VAPID_PUBLIC_KEY}
+    ok, err = await asyncio.to_thread(push_vapid_healthy)
+    if not ok:
+        detail = "VAPID 鍵の読み込みに失敗しました"
+        if err and err != "not_configured":
+            detail += f"：{err}"
+        raise HTTPException(status_code=503, detail=detail)
+    public_key = await asyncio.to_thread(get_application_server_key)
+    return {"publicKey": public_key}
 
 
 @app.post("/api/push/subscribe")
@@ -1016,6 +1030,12 @@ async def push_test(
 ):
     if not push_configured():
         raise HTTPException(status_code=503, detail="Web Push が設定されていません")
+    ok, err = await asyncio.to_thread(push_vapid_healthy)
+    if not ok:
+        detail = "VAPID 鍵の設定に問題があります"
+        if err and err != "not_configured":
+            detail += f"：{err}"
+        raise HTTPException(status_code=503, detail=detail)
     if (
         body.endpoint
         and body.keys

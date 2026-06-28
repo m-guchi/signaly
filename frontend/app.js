@@ -1568,11 +1568,16 @@ async function subscribePush(forceNew = false) {
     const keyRes = await fetch(apiUrl('api/push/vapid-public-key'))
     if (!keyRes.ok) return false
     const { publicKey } = await keyRes.json()
+    if (!publicKey) return false
 
     let sub = await reg.pushManager.getSubscription()
     if (sub && forceNew) {
       await sub.unsubscribe()
-      sub = null
+      sub = await reg.pushManager.getSubscription()
+      if (sub) {
+        await sub.unsubscribe()
+        sub = null
+      }
     }
     if (!sub) {
       sub = await reg.pushManager.subscribe({
@@ -1731,6 +1736,11 @@ async function requestServerTestPush(subscriptionJson) {
   }
   const err = await res.json().catch(() => ({}))
   let detail = err.detail || 'バックグラウンド通知の送信に失敗しました'
+  if (Array.isArray(detail)) {
+    detail = detail.map((item) => item.msg || String(item)).join(' ')
+  } else if (detail && typeof detail === 'object') {
+    detail = detail.msg || JSON.stringify(detail)
+  }
   if (typeof detail !== 'string') {
     detail = 'バックグラウンド通知の送信に失敗しました'
   }
@@ -1775,7 +1785,9 @@ async function sendTestNotification() {
   }
 
   const localOk = await showTestNotificationLocally()
-  const shouldTryServer = pushSupported() && pushSubscribed
+  const shouldTryServer = pushSupported()
+    && Notification.permission === 'granted'
+    && !isPushDisabledByUser()
   let serverResult = null
   if (shouldTryServer) {
     try {
