@@ -79,7 +79,7 @@ def _build_payload(entry: Dict[str, Any]) -> str:
             "body": _notification_body(entry),
             "id": entry.get("id"),
             "channel": channel,
-            "url": f"./?channel={channel}" if channel else "./",
+            "url": f"./?channel={channel}&src=push" if channel else "./",
         },
         ensure_ascii=False,
     )

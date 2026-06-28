@@ -10,6 +10,26 @@ function channelFromQuery() {
   return new URLSearchParams(location.search).get('channel')
 }
 
+function isPushDeepLink() {
+  return new URLSearchParams(location.search).get('src') === 'push'
+}
+
+function resolveStartupChannel() {
+  const params = new URLSearchParams(location.search)
+  const urlChannel = params.get('channel')
+  const saved = loadLastChannel()
+
+  if (isPushDeepLink() && urlChannel) return urlChannel
+  return saved ?? urlChannel
+}
+
+function clearPushDeepLinkMarker() {
+  if (!isPushDeepLink()) return
+  const url = new URL(location.href)
+  url.searchParams.delete('src')
+  history.replaceState(null, '', url)
+}
+
 function updatePageUrl(channelName) {
   const url = new URL(location.href)
   if (channelName) {
@@ -815,6 +835,7 @@ async function selectChannel(name) {
 
   activeChannel = name
   saveLastChannel(name)
+  updatePageUrl(name)
   unread[name] = 0
   pendingNewCount = 0
   if (newNotifBanner) newNotifBanner.hidden = true
@@ -833,8 +854,6 @@ async function selectChannel(name) {
   // SSE を先に張り、履歴読み込み中の通知取りこぼしを防ぐ
   connectSSE(name)
   await loadHistory(name)
-
-  updatePageUrl(name)
 
   closeSidebar()
 }
@@ -2037,8 +2056,6 @@ async function init() {
 
   await registerServiceWorker()
 
-  const urlChannel = channelFromQuery()
-
   showChannelListLoading()
 
   const controller = new AbortController()
@@ -2056,7 +2073,8 @@ async function init() {
     SignalySettings.showAuthenticated()
     if (addGroupBtn) addGroupBtn.hidden = false
     if (reorderModeBtn) reorderModeBtn.hidden = false
-    renderChannelTree(data, urlChannel ?? loadLastChannel())
+    renderChannelTree(data, resolveStartupChannel())
+    clearPushDeepLinkMarker()
     await loadNotificationSettings()
     startUnreadPolling()
     try {
