@@ -226,11 +226,12 @@ const SignalySettings = {
     const pushEl = document.getElementById('notif-status-push')
     const messageEl = document.getElementById('notif-settings-message')
     const enableBtn = document.getElementById('notif-enable-btn')
+    const pushBlock = document.getElementById('notif-push-block')
     const reregisterBtn = document.getElementById('notif-reregister-btn')
     const disableBtn = document.getElementById('notif-disable-btn')
     const osHint = document.getElementById('notif-os-hint')
     const osHintText = document.getElementById('notif-os-hint-text')
-    if (!permEl || !pushEl || !messageEl || !enableBtn || !reregisterBtn || !disableBtn) return
+    if (!permEl || !pushEl || !messageEl || !enableBtn || !pushBlock || !reregisterBtn || !disableBtn) return
 
     const permission = Notification.permission
     const canPush = this.notifications?.pushSupported?.() ?? false
@@ -257,20 +258,21 @@ const SignalySettings = {
 
     enableBtn.hidden = permission !== 'default'
     if (permission === 'granted' && canPush) {
+      pushBlock.hidden = false
       reregisterBtn.hidden = false
-      reregisterBtn.textContent = pushSubscribed
-        ? 'Push 通知を再登録する'
-        : 'Push 通知を有効にする'
+      reregisterBtn.textContent = pushSubscribed ? '再登録する' : '有効にする'
+      disableBtn.hidden = !pushSubscribed
+      disableBtn.textContent = '無効にする'
     } else {
+      pushBlock.hidden = true
       reregisterBtn.hidden = true
+      disableBtn.hidden = true
     }
-    disableBtn.hidden = !(permission === 'granted' && canPush && pushSubscribed)
-    disableBtn.textContent = 'Push 通知を無効にする'
     osHint.hidden = permission !== 'denied'
     osHintText.textContent = this.osSettingsHintText()
 
     if (permission === 'granted' && pushSubscribed) {
-      messageEl.textContent = 'アプリを閉じていても通知が届きます。届かない場合は Push 通知を再登録してください。'
+      messageEl.textContent = 'アプリを閉じていても通知が届きます。届かない場合は再登録してください。'
     } else if (permission === 'granted') {
       messageEl.textContent = '端末の通知は許可されています。Push を登録するとバックグラウンドでも届きます。'
     } else if (permission === 'denied') {
