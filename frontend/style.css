@@ -1498,6 +1498,21 @@ html, body {
   margin: 0 0 16px;
 }
 
+.notif-test-result {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.notif-test-result--ok {
+  color: var(--accent);
+}
+
+.notif-test-result--error {
+  color: var(--error);
+}
+
 .notif-secondary-btn {
   background: transparent;
   border: 1px solid var(--border);
@@ -1601,22 +1616,26 @@ html, body {
   width: 100%;
 }
 
-.notif-push-block {
+.notif-actions {
   width: 100%;
   margin-top: 8px;
 }
 
-.notif-push-block .settings-btn-group {
+.notif-actions-group {
   flex-direction: row;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
+  gap: 6px;
 }
 
-.notif-push-block .settings-btn-group .create-channel-submit,
-.notif-push-block .settings-btn-group .settings-danger-btn {
+.notif-actions-group .create-channel-submit,
+.notif-actions-group .settings-danger-btn {
   min-width: 0;
-  flex: 1;
-  max-width: 10em;
+  flex: 1 1 0;
+  max-width: none;
+  width: auto;
+  padding: 8px 6px;
+  font-size: 12px;
 }
 
 .settings-btn-group .create-channel-submit,

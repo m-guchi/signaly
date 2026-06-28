@@ -284,12 +284,14 @@
           <div class="settings-btn-group">
             <button id="notif-enable-btn" type="button" class="create-channel-submit">通知を許可する</button>
           </div>
-          <div id="notif-push-block" class="notif-push-block" hidden>
-            <div class="settings-btn-group">
-              <button id="notif-reregister-btn" type="button" class="create-channel-submit notif-secondary-btn" hidden>再登録する</button>
-              <button id="notif-disable-btn" type="button" class="create-channel-submit settings-danger-btn" hidden>無効にする</button>
+          <div id="notif-actions" class="notif-actions" hidden>
+            <div class="settings-btn-group notif-actions-group">
+              <button id="notif-reregister-btn" type="button" class="create-channel-submit notif-secondary-btn" hidden>再登録</button>
+              <button id="notif-disable-btn" type="button" class="create-channel-submit settings-danger-btn" hidden>無効</button>
+              <button id="notif-test-btn" type="button" class="create-channel-submit notif-secondary-btn" hidden>テスト</button>
             </div>
           </div>
+          <p id="notif-test-result" class="notif-test-result" hidden></p>
           <div id="notif-os-hint" class="notif-os-hint" hidden>
             <p class="notif-os-hint-title">端末の通知設定を開く</p>
             <p id="notif-os-hint-text" class="create-channel-hint"></p>

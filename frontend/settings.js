@@ -198,6 +198,30 @@ const SignalySettings = {
         btn.disabled = false
       }
     })
+
+    document.getElementById('notif-test-btn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('notif-test-btn')
+      const resultEl = document.getElementById('notif-test-result')
+      if (!btn || !resultEl) return
+
+      btn.disabled = true
+      resultEl.hidden = true
+      try {
+        const result = await this.notifications.sendTest?.()
+        if (result?.ok) {
+          resultEl.textContent = result.mode === 'push'
+            ? 'テスト通知を送信しました。端末に届くか確認してください。'
+            : 'テスト通知を表示しました。見えていれば OK です。'
+          resultEl.className = 'notif-test-result notif-test-result--ok'
+        } else {
+          resultEl.textContent = result?.message || 'テストに失敗しました'
+          resultEl.className = 'notif-test-result notif-test-result--error'
+        }
+        resultEl.hidden = false
+      } finally {
+        btn.disabled = false
+      }
+    })
   },
 
   detectMobilePlatform() {
@@ -226,12 +250,14 @@ const SignalySettings = {
     const pushEl = document.getElementById('notif-status-push')
     const messageEl = document.getElementById('notif-settings-message')
     const enableBtn = document.getElementById('notif-enable-btn')
-    const pushBlock = document.getElementById('notif-push-block')
+    const pushBlock = document.getElementById('notif-actions')
     const reregisterBtn = document.getElementById('notif-reregister-btn')
     const disableBtn = document.getElementById('notif-disable-btn')
+    const testBtn = document.getElementById('notif-test-btn')
+    const testResult = document.getElementById('notif-test-result')
     const osHint = document.getElementById('notif-os-hint')
     const osHintText = document.getElementById('notif-os-hint-text')
-  if (!permEl || !pushEl || !messageEl || !enableBtn || !pushBlock || !reregisterBtn || !disableBtn || !osHint || !osHintText) return
+  if (!permEl || !pushEl || !messageEl || !enableBtn || !pushBlock || !reregisterBtn || !disableBtn || !testBtn || !testResult || !osHint || !osHintText) return
 
     const permission = Notification.permission
     const canPush = this.notifications?.pushSupported?.() ?? false
@@ -258,18 +284,20 @@ const SignalySettings = {
 
     enableBtn.hidden = permission !== 'default'
     if (permission === 'granted' && canPush) {
-      pushBlock.hidden = false
       reregisterBtn.hidden = false
-      reregisterBtn.textContent = pushSubscribed ? '再登録する' : '有効にする'
+      reregisterBtn.textContent = pushSubscribed ? '再登録' : '有効'
       disableBtn.hidden = !pushSubscribed
-      disableBtn.textContent = '無効にする'
+      disableBtn.textContent = '無効'
     } else {
-      pushBlock.hidden = true
       reregisterBtn.hidden = true
       disableBtn.hidden = true
     }
+
+    testBtn.hidden = permission !== 'granted'
+    pushBlock.hidden = reregisterBtn.hidden && disableBtn.hidden && testBtn.hidden
     osHint.hidden = permission !== 'denied'
     osHintText.textContent = this.osSettingsHintText()
+    testResult.hidden = true
 
     if (permission === 'granted' && pushSubscribed) {
       messageEl.textContent = 'アプリを閉じていても通知が届きます。届かない場合は再登録してください。'

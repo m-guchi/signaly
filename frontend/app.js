@@ -1348,6 +1348,43 @@ function showDesktopNotification(entry) {
   }
 }
 
+async function sendTestNotification() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') {
+    return { ok: false, message: '端末の通知が許可されていません。' }
+  }
+
+  if (pushSupported() && pushSubscribed) {
+    try {
+      const res = await fetch(apiUrl('api/push/test'), { method: 'POST' })
+      if (res.ok) {
+        return { ok: true, mode: 'push' }
+      }
+      const err = await res.json().catch(() => ({}))
+      const detail = err.detail || 'テスト通知の送信に失敗しました'
+      if (res.status === 404) {
+        return { ok: false, message: `${detail}「有効にする」または「再登録する」を試してください。` }
+      }
+      return { ok: false, message: detail }
+    } catch {
+      return { ok: false, message: 'ネットワークエラー' }
+    }
+  }
+
+  try {
+    const icon = typeof APP_VERSION !== 'undefined'
+      ? `icon-192.png?v=${APP_VERSION}`
+      : 'icon-192.png'
+    new Notification('Signaly テスト通知', {
+      body: '通知の受信確認用です。このまま届いていれば OK です。',
+      icon,
+      tag: 'signaly-test',
+    })
+    return { ok: true, mode: 'local' }
+  } catch {
+    return { ok: false, message: '通知の表示に失敗しました' }
+  }
+}
+
 SignalySettings.init({
   apiUrl,
   closeSidebar,
@@ -1357,6 +1394,7 @@ SignalySettings.init({
     getPushSubscribed: () => pushSubscribed,
     subscribePush,
     unsubscribePush,
+    sendTest: sendTestNotification,
     onStateChange: () => SignalySettings.updateSettingsBtnState(),
   },
 })

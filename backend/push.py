@@ -108,6 +108,85 @@ def _delete_subscription(sub_id: str) -> None:
             session.commit()
 
 
+def _fetch_subscriptions_for_email(email: str) -> List[Dict[str, str]]:
+    with get_session() as session:
+        rows = session.query(PushSubscription).filter(PushSubscription.email == email).all()
+        return [
+            {
+                "id": row.id,
+                "email": row.email,
+                "endpoint": row.endpoint,
+                "p256dh": row.p256dh,
+                "auth": row.auth,
+            }
+            for row in rows
+        ]
+
+
+def _build_test_payload() -> str:
+    return json.dumps(
+        {
+            "title": "Signaly テスト通知",
+            "body": "通知の受信確認用です。このまま届いていれば OK です。",
+            "id": "signaly-test",
+            "channel": "",
+            "url": "./",
+        },
+        ensure_ascii=False,
+    )
+
+
+def _deliver_push(sub: Dict[str, str], payload: str, vapid: Vapid02) -> bool:
+    subscription_info = {
+        "endpoint": sub["endpoint"],
+        "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},
+    }
+    try:
+        webpush(
+            subscription_info=subscription_info,
+            data=payload,
+            vapid_private_key=vapid,
+            vapid_claims={"sub": VAPID_SUBJECT},
+        )
+        return True
+    except WebPushException as exc:
+        status = exc.response.status_code if exc.response is not None else None
+        body = (exc.response.text or "")[:200] if exc.response is not None else ""
+        logger.warning(
+            "Web Push failed (%s): %s — %s",
+            status,
+            sub["endpoint"][:60],
+            body,
+        )
+        if status in (403, 404, 410):
+            _delete_subscription(sub["id"])
+        return False
+    except Exception:
+        logger.exception("Web Push error: %s", sub["endpoint"][:60])
+        return False
+
+
+def send_test_push_to_user(email: str) -> Dict[str, Any]:
+    """ログイン中ユーザーの登録端末へテスト Push を送る。"""
+    if not push_configured():
+        return {"sent": 0, "failed": 0, "error": "not_configured"}
+
+    subs = _fetch_subscriptions_for_email(email)
+    if not subs:
+        return {"sent": 0, "failed": 0, "error": "no_subscription"}
+
+    payload = _build_test_payload()
+    vapid = _load_vapid()
+    sent = 0
+    failed = 0
+    for sub in subs:
+        if _deliver_push(sub, payload, vapid):
+            sent += 1
+        else:
+            failed += 1
+    return {"sent": sent, "failed": failed}
+
+
 def send_push_notifications(entry: Dict[str, Any]) -> None:
     """全登録端末に Web Push を送信する（webhook 受信時に呼ぶ）"""
     if not push_configured():
@@ -125,30 +204,5 @@ def send_push_notifications(entry: Dict[str, Any]) -> None:
     for sub in subs:
         if channel_name and not resolve_notification_enabled(sub["email"], channel_name):
             continue
-        subscription_info = {
-            "endpoint": sub["endpoint"],
-            "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},
-        }
-        try:
-            # pywebpush は vapid_claims を破壊的に更新する（aud/exp を追加）。
-            # 複数端末へ送るとき dict を再利用すると、先の FCM 用 aud が
-            # Apple 送信に残り 403 になる。
-            webpush(
-                subscription_info=subscription_info,
-                data=payload,
-                vapid_private_key=vapid,
-                vapid_claims={"sub": VAPID_SUBJECT},
-            )
-        except WebPushException as exc:
-            status = exc.response.status_code if exc.response is not None else None
-            body = (exc.response.text or "")[:200] if exc.response is not None else ""
-            logger.warning(
-                "Web Push failed (%s): %s — %s",
-                status,
-                sub["endpoint"][:60],
-                body,
-            )
-            if status in (403, 404, 410):
-                _delete_subscription(sub["id"])
-        except Exception:
-            logger.exception("Web Push error: %s", sub["endpoint"][:60])
+        if not _deliver_push(sub, payload, vapid):
+            pass
