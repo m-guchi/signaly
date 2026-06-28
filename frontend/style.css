@@ -254,6 +254,53 @@ html, body {
   white-space: pre-wrap;
 }
 
+/* ── Embed fields (Discord-style) ──────────── */
+
+.embed-fields {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px 16px;
+  margin-top: 8px;
+}
+
+.embed-field {
+  grid-column: span 3;
+}
+
+.embed-field--inline {
+  grid-column: span 1;
+}
+
+.embed-field-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.embed-field-value {
+  font-size: 13px;
+  color: #ccc;
+  word-break: break-word;
+}
+
+.embed-field-value a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.embed-field-value a:hover {
+  text-decoration: underline;
+}
+
+.embed-field-value code {
+  background: var(--bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 12px;
+}
+
 /* ── Empty / loading states ────────────────── */
 
 .empty-state {

@@ -35,11 +35,25 @@ function setStatus(state) {
 
 // ── Notification card ────────────────────────────────────────────────────────
 
+function renderFieldValue(raw) {
+  const escaped = raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  return escaped
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+}
+
 function createCard(entry) {
   const card = document.createElement('div')
   card.className = 'notif-card'
   card.dataset.level = entry.level || 'info'
   card.dataset.id = entry.id
+
+  if (entry.color) {
+    card.style.borderLeftColor = entry.color
+  }
 
   const header = document.createElement('div')
   header.className = 'notif-header'
@@ -55,13 +69,35 @@ function createCard(entry) {
 
   header.appendChild(title)
   header.appendChild(time)
-
-  const msg = document.createElement('p')
-  msg.className = 'notif-message'
-  msg.textContent = entry.message
-
   card.appendChild(header)
-  card.appendChild(msg)
+
+  if (entry.fields && entry.fields.length > 0) {
+    const fieldsEl = document.createElement('div')
+    fieldsEl.className = 'embed-fields'
+    for (const f of entry.fields) {
+      const fieldEl = document.createElement('div')
+      fieldEl.className = f.inline ? 'embed-field embed-field--inline' : 'embed-field'
+
+      const nameEl = document.createElement('div')
+      nameEl.className = 'embed-field-name'
+      nameEl.textContent = f.name
+
+      const valueEl = document.createElement('div')
+      valueEl.className = 'embed-field-value'
+      valueEl.innerHTML = renderFieldValue(String(f.value))
+
+      fieldEl.appendChild(nameEl)
+      fieldEl.appendChild(valueEl)
+      fieldsEl.appendChild(fieldEl)
+    }
+    card.appendChild(fieldsEl)
+  } else if (entry.message) {
+    const msg = document.createElement('p')
+    msg.className = 'notif-message'
+    msg.textContent = entry.message
+    card.appendChild(msg)
+  }
+
   return card
 }
 

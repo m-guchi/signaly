@@ -1,9 +1,10 @@
 import json
 import asyncio
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,38 +12,71 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from database import Notification, get_session, init_db
+
 BASE_DIR = Path(__file__).parent
-DATA_DIR = BASE_DIR / "data"
 CHANNELS_FILE = BASE_DIR / "channels.json"
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
 # channel_name → list of subscriber queues
-_subscribers: dict[str, list[asyncio.Queue]] = {}
+_subscribers: Dict[str, List[asyncio.Queue]] = {}
 
 
-def load_channels() -> dict[str, str]:
+def load_channels() -> Dict[str, str]:
     """channel_id -> channel_name のマッピングを返す"""
     if not CHANNELS_FILE.exists():
         return {}
     return json.loads(CHANNELS_FILE.read_text(encoding="utf-8"))
 
 
-def append_log(channel_name: str, entry: dict) -> None:
-    DATA_DIR.mkdir(exist_ok=True)
-    log_file = DATA_DIR / f"log_{channel_name}.json"
-    logs: list = []
-    if log_file.exists():
-        try:
-            logs = json.loads(log_file.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            logs = []
-    logs.append(entry)
-    log_file.write_text(
-        json.dumps(logs, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+def _save_notification(entry: dict) -> None:
+    with get_session() as session:
+        session.add(
+            Notification(
+                id=entry["id"],
+                channel=entry["channel"],
+                title=entry["title"],
+                message=entry["message"],
+                level=entry["level"],
+                timestamp=datetime.fromisoformat(entry["timestamp"]),
+                fields=json.dumps(entry["fields"], ensure_ascii=False) if entry.get("fields") else None,
+                color=entry.get("color"),
+            )
+        )
+        session.commit()
 
 
-app = FastAPI(title="Signaly")
+def _fetch_history(channel_name: str, limit: int) -> List[dict]:
+    with get_session() as session:
+        rows = (
+            session.query(Notification)
+            .filter(Notification.channel == channel_name)
+            .order_by(Notification.timestamp.asc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "id": r.id,
+                "channel": r.channel,
+                "title": r.title,
+                "message": r.message,
+                "level": r.level,
+                "timestamp": r.timestamp.isoformat(),
+                "fields": json.loads(r.fields) if getattr(r, "fields", None) else None,
+                "color": getattr(r, "color", None),
+            }
+            for r in rows
+        ]
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="Signaly", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,9 +87,11 @@ app.add_middleware(
 
 
 class WebhookPayload(BaseModel):
-    message: str
+    message: str = ""
     title: str = ""
     level: str = "info"  # info | warning | error
+    color: Optional[str] = None  # CSS hex e.g. #57f287
+    fields: Optional[List[dict]] = None  # [{name, value, inline}]
 
 
 @app.post("/webhook/{channel_id}")
@@ -71,12 +107,13 @@ async def receive_webhook(channel_id: str, payload: WebhookPayload):
         "title": payload.title,
         "message": payload.message,
         "level": payload.level,
+        "color": payload.color,
+        "fields": payload.fields,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-    append_log(channel_name, entry)
+    await asyncio.to_thread(_save_notification, entry)
 
-    # SSE 購読者に配信
     for q in list(_subscribers.get(channel_name, [])):
         try:
             q.put_nowait(entry)
@@ -98,12 +135,8 @@ async def get_history(channel_name: str, limit: int = 200):
     if channel_name not in channels.values():
         raise HTTPException(status_code=404, detail="Channel not found")
 
-    log_file = DATA_DIR / f"log_{channel_name}.json"
-    if not log_file.exists():
-        return {"logs": []}
-
-    logs = json.loads(log_file.read_text(encoding="utf-8"))
-    return {"logs": logs[-limit:]}
+    logs = await asyncio.to_thread(_fetch_history, channel_name, limit)
+    return {"logs": logs}
 
 
 @app.get("/api/stream/{channel_name}")
@@ -117,7 +150,6 @@ async def stream_events(channel_name: str, request: Request):
 
     async def generate() -> AsyncIterator[str]:
         try:
-            # 接続確認用の初期イベント
             yield "event: ping\ndata: {}\n\n"
             while True:
                 if await request.is_disconnected():
@@ -126,7 +158,6 @@ async def stream_events(channel_name: str, request: Request):
                     entry = await asyncio.wait_for(queue.get(), timeout=25.0)
                     yield f"data: {json.dumps(entry, ensure_ascii=False)}\n\n"
                 except asyncio.TimeoutError:
-                    # keep-alive
                     yield "event: ping\ndata: {}\n\n"
         finally:
             subs = _subscribers.get(channel_name, [])
@@ -144,7 +175,6 @@ async def stream_events(channel_name: str, request: Request):
     )
 
 
-# フロントエンドの静的ファイルを最後にマウント（API ルートより後に配置）
 if FRONTEND_DIR.exists():
     app.mount(
         "/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="static"

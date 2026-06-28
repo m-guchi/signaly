@@ -1,6 +1,7 @@
 # シークレット
 .env
 .env.local
+.env.production
 backend/channels.json
 
 # データ（VPS 上で生成されるログ）

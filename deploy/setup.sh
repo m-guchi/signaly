@@ -28,9 +28,10 @@ if [[ ! -f "$APP_DIR/backend/channels.json" ]]; then
   echo "  !! backend/channels.json を編集してチャンネルIDを設定してください"
 fi
 
-echo "==> data ディレクトリ作成"
-mkdir -p "$APP_DIR/backend/data"
-sudo chown -R www-data:www-data "$APP_DIR/backend/data"
+echo "==> MySQL データベースを作成（存在しない場合のみ）"
+echo "  !! DATABASE_URL 環境変数が設定されていることを確認してください"
+mysql -u root -e "CREATE DATABASE IF NOT EXISTS app_signaly CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>/dev/null || \
+  echo "  !! DB 作成をスキップ（手動で実行してください）: CREATE DATABASE app_signaly CHARACTER SET utf8mb4;"
 
 echo "==> systemd サービスを登録"
 sudo cp "$APP_DIR/deploy/signaly.service" /etc/systemd/system/signaly.service

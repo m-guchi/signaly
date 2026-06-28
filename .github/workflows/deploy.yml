@@ -17,11 +17,16 @@ jobs:
           export-to-environment: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          SSH_PRIVATE_KEY:   op://apps/Server/private_key
-          SSH_KNOWN_HOSTS:   op://apps/Server/known_hosts
-          SSH_HOST:          op://apps/Server/hostname
-          SSH_USER:          op://apps/Server/username
+          SSH_PRIVATE_KEY:        op://apps/Server/private_key
+          SSH_KNOWN_HOSTS:        op://apps/Server/known_hosts
+          SSH_HOST:               op://apps/Server/hostname
+          SSH_USER:               op://apps/Server/username
           DISCORD_CI_WEBHOOK_URL: op://apps/discord_webhook/CI_URL
+          DB_NAME:                op://apps/signaly/db-name
+          DB_USER:                op://apps/DB/db-user
+          DB_PASSWORD:            op://apps/DB/db-password
+          DB_HOST:                op://apps/DB/db-host
+          DB_PORT:                op://apps/DB/db-port
 
       - name: SSH キーをセットアップ
         uses: shimataro/ssh-key-action@v2
@@ -30,17 +35,42 @@ jobs:
           known_hosts:   ${{ env.SSH_KNOWN_HOSTS }}
 
       - name: VPS にデプロイ
+        env:
+          DB_NAME:     ${{ env.DB_NAME }}
+          DB_USER:     ${{ env.DB_USER }}
+          DB_PASSWORD: ${{ env.DB_PASSWORD }}
+          DB_HOST:     ${{ env.DB_HOST }}
+          DB_PORT:     ${{ env.DB_PORT }}
         run: |
           rsync -az --delete \
             --exclude='.git' \
             --exclude='.venv' \
-            --exclude='backend/data/' \
             --exclude='backend/channels.json' \
             ./ ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:/apps/signaly/
 
-          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} bash << 'EOF'
+          b64() { printf '%s' "$1" | base64 -w 0; }
+
+          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} << EOF
             set -e
             cd /apps/signaly
+
+            # .env に DB 接続情報を書き込む（既存行を上書き）
+            sync_env_var() {
+              key="\$1"
+              value="\$(printf '%s' "\$2" | base64 -d)"
+              touch .env
+              if grep -q "^\${key}=" .env; then
+                grep -v "^\${key}=" .env > .env.tmp && mv .env.tmp .env
+              fi
+              printf '%s=%s\n' "\$key" "\$value" >> .env
+            }
+
+            sync_env_var DB_NAME     '$(b64 "$DB_NAME")'
+            sync_env_var DB_USER     '$(b64 "$DB_USER")'
+            sync_env_var DB_PASSWORD '$(b64 "$DB_PASSWORD")'
+            sync_env_var DB_HOST     '$(b64 "$DB_HOST")'
+            sync_env_var DB_PORT     '$(b64 "$DB_PORT")'
+
             .venv/bin/pip install --quiet -r backend/requirements.txt
             sudo systemctl restart signaly
           EOF
