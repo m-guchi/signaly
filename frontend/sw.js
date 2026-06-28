@@ -52,4 +52,12 @@ self.addEventListener('notificationclick', (event) => {
   )
 })
 
+// キャッシュしない：HTML / JS / CSS は常にネットワークから取得
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url)
+  if (url.origin !== self.location.origin) return
+  if (event.request.method !== 'GET') return
+  event.respondWith(fetch(event.request))
+})
+
 // キャッシュしない：全リクエストをネットワークから取得

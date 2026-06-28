@@ -73,6 +73,13 @@ html, body {
   text-decoration: none;
 }
 
+.sidebar-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .sidebar-nav {
   display: flex;
   flex-direction: column;
@@ -113,6 +120,8 @@ html, body {
   display: flex;
   align-items: center;
   transition: color 0.15s, background 0.15s;
+  position: relative;
+  z-index: 1;
 }
 
 .notif-btn:hover {
@@ -500,7 +509,7 @@ html, body {
   background: rgba(0, 0, 0, 0.5);
   align-items: flex-end;
   justify-content: center;
-  z-index: 90;
+  z-index: 150;
 }
 
 .changelog-dialog.open {
@@ -668,6 +677,81 @@ html, body {
 .create-channel-hint {
   font-size: 11px;
   color: var(--text-subtle);
+}
+
+/* ── Notification settings dialog ──────────── */
+
+.notif-status-list {
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.notif-status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.notif-status-row:first-child {
+  padding-top: 0;
+}
+
+.notif-status-row dt {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.notif-status-row dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: right;
+}
+
+.notif-status-row dd.notif-status--ok {
+  color: var(--accent);
+}
+
+.notif-status-row dd.notif-status--warn {
+  color: #fbbf24;
+}
+
+.notif-status-row dd.notif-status--bad {
+  color: #f87171;
+}
+
+.notif-settings-message {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0 0 16px;
+}
+
+.notif-secondary-btn {
+  margin-top: 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.notif-secondary-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.notif-os-hint {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.notif-os-hint-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0 0 6px;
 }
 
 /* ── Webhooks page ─────────────────────────── */

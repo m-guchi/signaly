@@ -470,32 +470,144 @@ function showDesktopNotification(entry) {
 }
 
 function updateNotifBtnState() {
+  if (!notifBtn) return
   if (!('Notification' in window)) {
     notifBtn.hidden = true
     return
   }
   notifBtn.hidden = false
+  notifBtn.title = '通知設定'
   if (Notification.permission === 'granted') {
     notifBtn.classList.add('granted')
-    notifBtn.title = pushSubscribed
-      ? 'Push 通知は有効です（バックグラウンド対応）'
-      : '通知は有効です'
   } else {
     notifBtn.classList.remove('granted')
-    notifBtn.title = 'Push 通知を許可する'
   }
 }
 
-notifBtn.addEventListener('click', async () => {
-  if (!('Notification' in window)) return
-  if (Notification.permission === 'default') {
-    await Notification.requestPermission()
+function detectMobilePlatform() {
+  const ua = navigator.userAgent
+  if (/iPhone|iPad|iPod/.test(ua)) return 'ios'
+  if (/Android/.test(ua)) return 'android'
+  return 'desktop'
+}
+
+function osSettingsHintText() {
+  const platform = detectMobilePlatform()
+  if (platform === 'ios') {
+    return '設定 → 通知 → Signaly で「通知を許可」をオンにしてください。ホーム画面に追加した PWA から開いている必要があります。'
   }
-  if (Notification.permission === 'granted') {
-    await subscribePush(true)
+  if (platform === 'android') {
+    return '設定 → アプリ → Signaly → 通知 で通知をオンにしてください。'
   }
-  updateNotifBtnState()
-})
+  return 'ブラウザのアドレスバー左のアイコン → サイトの設定 → 通知 で許可してください。'
+}
+
+function renderNotifSettings() {
+  const permEl = document.getElementById('notif-status-permission')
+  const pushEl = document.getElementById('notif-status-push')
+  const messageEl = document.getElementById('notif-settings-message')
+  const enableBtn = document.getElementById('notif-enable-btn')
+  const reregisterBtn = document.getElementById('notif-reregister-btn')
+  const osHint = document.getElementById('notif-os-hint')
+  const osHintText = document.getElementById('notif-os-hint-text')
+  if (!permEl || !pushEl || !messageEl || !enableBtn || !reregisterBtn || !osHint || !osHintText) return
+
+  const permission = ('Notification' in window) ? Notification.permission : 'denied'
+  const canPush = pushSupported()
+
+  permEl.textContent = permission === 'granted' ? '許可済み'
+    : permission === 'denied' ? 'ブロック中' : '未設定'
+  permEl.className = permission === 'granted' ? 'notif-status--ok'
+    : permission === 'denied' ? 'notif-status--bad' : 'notif-status--warn'
+
+  if (!canPush) {
+    pushEl.textContent = '非対応'
+    pushEl.className = 'notif-status--bad'
+  } else if (pushSubscribed) {
+    pushEl.textContent = '有効（バックグラウンド対応）'
+    pushEl.className = 'notif-status--ok'
+  } else if (permission === 'granted') {
+    pushEl.textContent = '未登録'
+    pushEl.className = 'notif-status--warn'
+  } else {
+    pushEl.textContent = '—'
+    pushEl.className = ''
+  }
+
+  enableBtn.hidden = permission !== 'default'
+  reregisterBtn.hidden = !(permission === 'granted' && canPush)
+  osHint.hidden = permission !== 'denied'
+  osHintText.textContent = osSettingsHintText()
+
+  if (permission === 'granted' && pushSubscribed) {
+    messageEl.textContent = 'アプリを閉じていても通知が届きます。届かない場合は Push を再登録してください。'
+  } else if (permission === 'granted') {
+    messageEl.textContent = '端末の通知は許可されています。Push を登録するとバックグラウンドでも届きます。'
+  } else if (permission === 'denied') {
+    messageEl.textContent = '通知がブロックされています。下の手順で端末の設定から許可してください。'
+  } else {
+    messageEl.textContent = '「通知を許可する」を押すと、端末の確認画面が開きます。'
+  }
+}
+
+function openNotifSettingsDialog() {
+  if (!notifSettingsDialog) return
+  closeSidebar()
+  renderNotifSettings()
+  notifSettingsDialog.classList.add('open')
+}
+
+function closeNotifSettingsDialog() {
+  notifSettingsDialog?.classList.remove('open')
+}
+
+const notifSettingsDialog = document.getElementById('notif-settings-dialog')
+const notifSettingsClose = document.getElementById('notif-settings-close')
+const notifEnableBtn = document.getElementById('notif-enable-btn')
+const notifReregisterBtn = document.getElementById('notif-reregister-btn')
+
+function setupNotifSettingsUi() {
+  if (!notifBtn || !notifSettingsDialog) return
+
+  notifBtn.addEventListener('click', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    openNotifSettingsDialog()
+  })
+
+  notifSettingsClose?.addEventListener('click', closeNotifSettingsDialog)
+
+  notifSettingsDialog.addEventListener('click', (e) => {
+    if (e.target === notifSettingsDialog) closeNotifSettingsDialog()
+  })
+
+  notifEnableBtn?.addEventListener('click', async () => {
+    notifEnableBtn.disabled = true
+    try {
+      await Notification.requestPermission()
+      if (Notification.permission === 'granted') {
+        await subscribePush(true)
+      }
+      updateNotifBtnState()
+      renderNotifSettings()
+    } finally {
+      notifEnableBtn.disabled = false
+    }
+  })
+
+  notifReregisterBtn?.addEventListener('click', async () => {
+    notifReregisterBtn.disabled = true
+    try {
+      await subscribePush(true)
+      updateNotifBtnState()
+      renderNotifSettings()
+    } finally {
+      notifReregisterBtn.disabled = false
+    }
+  })
+}
+
+setupNotifSettingsUi()
 
 // ── Version / Changelog ──────────────────────────────────────────────────────
 
@@ -689,6 +801,9 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && channelSettingsDialog?.classList.contains('open')) {
     closeChannelSettingsDialog()
   }
+  if (e.key === 'Escape' && notifSettingsDialog?.classList.contains('open')) {
+    closeNotifSettingsDialog()
+  }
 })
 
 channelSettingsCopy?.addEventListener('click', async () => {
@@ -730,7 +845,9 @@ function addLogoutButton() {
     await fetch(apiUrl('auth/logout'), { method: 'POST' })
     location.reload()
   })
-  document.querySelector('.sidebar-header').appendChild(btn)
+  const actions = document.getElementById('sidebar-header-actions')
+    ?? document.querySelector('.sidebar-header')
+  actions?.appendChild(btn)
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
