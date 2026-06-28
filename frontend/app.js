@@ -405,7 +405,7 @@ function pushSupported() {
   return 'serviceWorker' in navigator && 'PushManager' in window
 }
 
-async function subscribePush() {
+async function subscribePush(forceNew = false) {
   if (!pushSupported()) return false
 
   try {
@@ -416,6 +416,10 @@ async function subscribePush() {
     const { publicKey } = await keyRes.json()
 
     let sub = await reg.pushManager.getSubscription()
+    if (sub && forceNew) {
+      await sub.unsubscribe()
+      sub = null
+    }
     if (!sub) {
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
@@ -488,7 +492,7 @@ notifBtn.addEventListener('click', async () => {
     await Notification.requestPermission()
   }
   if (Notification.permission === 'granted') {
-    await subscribePush()
+    await subscribePush(true)
   }
   updateNotifBtnState()
 })

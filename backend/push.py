@@ -118,7 +118,7 @@ def send_push_notifications(entry: Dict[str, Any]) -> None:
         except WebPushException as exc:
             status = exc.response.status_code if exc.response is not None else None
             logger.warning("Web Push failed (%s): %s", status, sub["endpoint"][:60])
-            if status in (404, 410):
+            if status in (403, 404, 410):
                 _delete_subscription(sub["id"])
         except Exception:
             logger.exception("Web Push error: %s", sub["endpoint"][:60])
