@@ -136,7 +136,7 @@ Webhook URL はログイン後の **Webhook URL** 画面で確認できます。
 
 | アイテム | フィールド | 用途 |
 |---------|-----------|------|
-| `signaly` | `deploy-dir` | デプロイ先パス（例: `/apps/signaly`） |
+| `signaly` | `target-dir` | デプロイ先パス（例: `/apps/signaly`） |
 | `signaly` | `db-name` 他 | アプリ固有シークレット |
 | `DB` | `db-user` 等 | MySQL 共通接続情報 |
 | `Server` | `host` / `username` / `ssh-port` | SSH 接続 |
