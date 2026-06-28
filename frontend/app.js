@@ -22,6 +22,7 @@ let pendingNewCount = 0
 let notificationSettings = { channels: {}, groups: {} }
 
 const LAST_READ_KEY = 'signaly-last-read'
+const LAST_CHANNEL_KEY = 'signaly-last-channel'
 const UNREAD_POLL_MS = 15000
 const NEW_CARD_FADE_MS = 60000
 
@@ -232,6 +233,26 @@ function loadLastReadAt() {
 function saveLastReadAt() {
   try {
     localStorage.setItem(LAST_READ_KEY, JSON.stringify(lastReadAt))
+  } catch {
+    // quota exceeded 等は無視
+  }
+}
+
+function loadLastChannel() {
+  try {
+    return localStorage.getItem(LAST_CHANNEL_KEY) || null
+  } catch {
+    return null
+  }
+}
+
+function saveLastChannel(name) {
+  try {
+    if (name) {
+      localStorage.setItem(LAST_CHANNEL_KEY, name)
+    } else {
+      localStorage.removeItem(LAST_CHANNEL_KEY)
+    }
   } catch {
     // quota exceeded 等は無視
   }
@@ -643,7 +664,7 @@ function renderChannelTree(data, selectName = null, options = {}) {
 
   if (skipSelect) return
 
-  const target = selectName
+  const target = (selectName && names.includes(selectName) ? selectName : null)
     ?? (activeChannel && names.includes(activeChannel) ? null : names[0] ?? null)
 
   if (target) {
@@ -782,6 +803,7 @@ async function selectChannel(name) {
   if (activeChannel === name) return
 
   activeChannel = name
+  saveLastChannel(name)
   unread[name] = 0
   pendingNewCount = 0
   if (newNotifBanner) newNotifBanner.hidden = true
@@ -1945,6 +1967,54 @@ async function checkAuth() {
   return false
 }
 
+// ── Service Worker（PWA 自動更新）────────────────────────────────────────────
+
+let swUpdatePending = false
+let swRefreshing = false
+
+function setupServiceWorkerAutoUpdate(registration) {
+  registration.addEventListener('updatefound', () => {
+    const worker = registration.installing
+    if (!worker) return
+    worker.addEventListener('statechange', () => {
+      if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+        swUpdatePending = true
+      }
+    })
+  })
+
+  const checkForUpdates = () => {
+    registration.update().catch(() => {})
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) checkForUpdates()
+  })
+  window.addEventListener('focus', checkForUpdates)
+  setInterval(checkForUpdates, 60 * 60 * 1000)
+
+  checkForUpdates()
+}
+
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return
+
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!swUpdatePending || swRefreshing) return
+    swRefreshing = true
+    location.reload()
+  })
+
+  try {
+    const registration = await navigator.serviceWorker.register('./sw.js', {
+      updateViaCache: 'none',
+    })
+    setupServiceWorkerAutoUpdate(registration)
+  } catch {
+    // 未対応ブラウザなど
+  }
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
@@ -1952,12 +2022,7 @@ async function init() {
   const loginLink = document.getElementById('login-link')
   if (loginLink) loginLink.href = apiUrl('auth/login')
 
-  if ('serviceWorker' in navigator) {
-    const swUrl = typeof APP_VERSION !== 'undefined'
-      ? `./sw.js?v=${APP_VERSION}`
-      : './sw.js'
-    await navigator.serviceWorker.register(swUrl).catch(() => {})
-  }
+  await registerServiceWorker()
 
   const urlChannel = new URLSearchParams(location.search).get('channel')
 
@@ -1977,7 +2042,7 @@ async function init() {
     SignalySettings.showAuthenticated()
     if (addGroupBtn) addGroupBtn.hidden = false
     if (reorderModeBtn) reorderModeBtn.hidden = false
-    renderChannelTree(data, urlChannel)
+    renderChannelTree(data, urlChannel ?? loadLastChannel())
     await loadNotificationSettings()
     startUnreadPolling()
     try {
