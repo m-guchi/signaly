@@ -1,8 +1,15 @@
 'use strict'
 
-const APP_VERSION = '1.0.8'
+const APP_VERSION = '1.0.9'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.0.9',
+    date: '2026-06-29',
+    changes: [
+      'ホーム画面アイコンに未読件数バッジを表示（iOS 16.4+ / Android / デスクトップ）',
+    ],
+  },
   {
     version: '1.0.8',
     date: '2026-06-29',

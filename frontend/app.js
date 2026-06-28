@@ -304,6 +304,23 @@ function totalUnread() {
 function updateDocumentTitle() {
   const total = totalUnread()
   document.title = total > 0 ? `(${total > 99 ? '99+' : total}) Signaly` : 'Signaly'
+  void updateAppBadge(total)
+}
+
+async function updateAppBadge(total = totalUnread()) {
+  try {
+    if ('setAppBadge' in navigator) {
+      if (total > 0) {
+        await navigator.setAppBadge(total)
+      } else if ('clearAppBadge' in navigator) {
+        await navigator.clearAppBadge()
+      }
+    }
+  } catch {
+    // 通知未許可・非対応環境など
+  }
+  const sw = navigator.serviceWorker?.controller
+  if (sw) sw.postMessage({ type: 'sync-app-badge', count: total })
 }
 
 // ── Notification card ────────────────────────────────────────────────────────
@@ -2102,6 +2119,10 @@ async function registerServiceWorker() {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) void updateAppBadge()
+  })
 
   const loginLink = document.getElementById('login-link')
   if (loginLink) loginLink.href = apiUrl('auth/login')

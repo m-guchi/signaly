@@ -6,10 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Cache-Control" content="no-cache">
   <title>Signaly</title>
-  <link rel="manifest" href="manifest.json?v=1.0.8">
-  <link rel="icon" href="icon.svg?v=1.0.8" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.0.8">
-  <link rel="stylesheet" href="style.css?v=1.0.8">
+  <link rel="manifest" href="manifest.json?v=1.0.9">
+  <link rel="icon" href="icon.svg?v=1.0.9" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.0.9">
+  <link rel="stylesheet" href="style.css?v=1.0.9">
   <meta name="theme-color" content="#000000">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -282,13 +282,25 @@
           </dl>
           <p id="notif-settings-message" class="notif-settings-message"></p>
           <div class="settings-btn-group">
-            <button id="notif-enable-btn" type="button" class="create-channel-submit">通知を許可する</button>
+            <button id="notif-enable-btn" type="button" class="create-channel-submit notif-action-btn">
+              <span class="notif-btn-icon notif-btn-icon--on" aria-hidden="true"></span>
+              <span class="notif-btn-label">通知を許可する</span>
+            </button>
           </div>
           <div id="notif-actions" class="notif-actions" hidden>
             <div class="settings-btn-group notif-actions-group">
-              <button id="notif-reregister-btn" type="button" class="create-channel-submit notif-secondary-btn" hidden>再登録</button>
-              <button id="notif-disable-btn" type="button" class="create-channel-submit settings-danger-btn" hidden>無効</button>
-              <button id="notif-test-btn" type="button" class="create-channel-submit notif-secondary-btn" hidden>テスト</button>
+              <button id="notif-reregister-btn" type="button" class="create-channel-submit notif-secondary-btn notif-action-btn" hidden>
+                <span class="notif-btn-icon notif-btn-icon--refresh" aria-hidden="true"></span>
+                <span class="notif-btn-label">再登録</span>
+              </button>
+              <button id="notif-disable-btn" type="button" class="create-channel-submit settings-danger-btn notif-action-btn" hidden>
+                <span class="notif-btn-icon notif-btn-icon--off" aria-hidden="true"></span>
+                <span class="notif-btn-label">無効</span>
+              </button>
+              <button id="notif-test-btn" type="button" class="create-channel-submit notif-secondary-btn notif-action-btn" hidden>
+                <span class="notif-btn-icon notif-btn-icon--test" aria-hidden="true"></span>
+                <span class="notif-btn-label">テスト</span>
+              </button>
             </div>
           </div>
           <p id="notif-test-result" class="notif-test-result" hidden></p>
@@ -367,10 +379,10 @@
     </div>
   </div>
 
-  <script defer src="changelog.js?v=1.0.8"></script>
-  <script defer src="dialog.js?v=1.0.8"></script>
-  <script defer src="reorder.js?v=1.0.8"></script>
-  <script defer src="settings.js?v=1.0.8"></script>
-  <script defer src="app.js?v=1.0.8"></script>
+  <script defer src="changelog.js?v=1.0.9"></script>
+  <script defer src="dialog.js?v=1.0.9"></script>
+  <script defer src="reorder.js?v=1.0.9"></script>
+  <script defer src="settings.js?v=1.0.9"></script>
+  <script defer src="app.js?v=1.0.9"></script>
 </body>
 </html>
