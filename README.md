@@ -139,8 +139,11 @@ Webhook URL はログイン後の **Webhook URL** 画面で確認できます。
 | `signaly` | `deploy-dir` | デプロイ先パス（例: `/apps/signaly`） |
 | `signaly` | `db-name` 他 | アプリ固有シークレット |
 | `DB` | `db-user` 等 | MySQL 共通接続情報 |
-| `Server` | `hostname` / `username` 等 | SSH 接続 |
+| `Server` | `host` / `username` / `ssh-port` | SSH 接続 |
+| `githubaction-sshkey` | `private_key` | GitHub Actions 用 SSH 秘密鍵 |
 | `discord_webhook` | `CI_URL` | デプロイ通知 |
+
+GitHub Actions は `.github/deploy.env.tpl` から上記を読み込みます。`known_hosts` は 1Password ではなく `ssh-keyscan` で取得します。
 
 GitHub Secrets には `OP_SERVICE_ACCOUNT_TOKEN` のみ登録します。
 
