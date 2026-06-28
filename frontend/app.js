@@ -57,6 +57,7 @@ let pushSubscribed = false
 let pendingNewCount = 0
 let pendingHighlightId = null
 let notificationSettings = { channels: {}, groups: {} }
+let notificationPrefsReady = false
 
 const HIGHLIGHT_FADE_MS = 8000
 
@@ -1275,6 +1276,7 @@ async function loadNotificationSettings() {
     const res = await fetch(apiUrl('api/notification-settings'))
     if (!res.ok) return false
     notificationSettings = await res.json()
+    notificationPrefsReady = true
     refreshNotifIndicators()
     return true
   } catch {
@@ -1430,17 +1432,18 @@ function updateGroupNotifSettingsUI(groupId) {
 }
 
 function isNotificationEnabled(channelName) {
+  if (!channelName || !notificationPrefsReady) return false
+
   const channel = channelsByName[channelName]
-  if (!channel?.id) return true
+  if (!channel?.id) return false
 
   const channelPref = notificationSettings.channels[channel.id]
-  if (channelPref !== undefined && channelPref !== null) {
-    return channelPref
-  }
+  if (channelPref === false) return false
+  if (channelPref === true) return true
 
   const groupId = channel.group_id
-  if (groupId && notificationSettings.groups[groupId] !== undefined) {
-    return notificationSettings.groups[groupId]
+  if (groupId && notificationSettings.groups[groupId] === false) {
+    return false
   }
 
   return true
@@ -2165,6 +2168,7 @@ groupSettingsNotifSegment && setupNotifSegment(groupSettingsNotifSegment, async 
     } else {
       notificationSettings.groups[groupSettingsId] = false
     }
+    notificationPrefsReady = true
     updateGroupNotifSettingsUI(groupSettingsId)
     refreshNotifIndicators()
     return true
@@ -2299,6 +2303,7 @@ channelSettingsNotifSegment && setupNotifSegment(channelSettingsNotifSegment, as
     } else {
       notificationSettings.channels[channelSettingsId] = enabled
     }
+    notificationPrefsReady = true
 
     const channel = channelsByName[channelSettingsOriginalName]
     if (channel) updateChannelNotifSettingsUI(channel)
@@ -2562,6 +2567,7 @@ async function init() {
     showAuthenticatedShell()
     renderChannelTree(cachedTree, startupChannel)
     updateAllBadges()
+    await loadNotificationSettings()
     startUnreadPolling()
   } else {
     showChannelListLoading()
@@ -2587,8 +2593,8 @@ async function init() {
     showAuthenticatedShell()
     renderChannelTree(data, startupChannel)
     clearPushDeepLinkMarker()
+    await loadNotificationSettings()
     startUnreadPolling()
-    void loadNotificationSettings()
     void syncPushSubscription().catch(() => {
       pushSubscribed = false
     }).finally(() => {
