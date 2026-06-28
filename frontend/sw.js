@@ -61,11 +61,13 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     (async () => {
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-      const visibleClients = clients.filter((c) => c.visibilityState === 'visible')
+      const focusedVisible = clients.filter(
+        (c) => c.focused && c.visibilityState === 'visible'
+      )
 
-      // 前面表示中だけページへ渡す（チャンネル設定を反映）。背景・終了時は SW が表示する。
-      if (visibleClients.length > 0) {
-        for (const client of visibleClients) {
+      // 操作中の前面タブだけページへ渡す（チャンネル設定を反映）。それ以外は SW が表示する。
+      if (focusedVisible.length > 0) {
+        for (const client of focusedVisible) {
           client.postMessage({ type: 'push-notification', data })
         }
         return
@@ -75,8 +77,8 @@ self.addEventListener('push', (event) => {
 
       await self.registration.showNotification(data.title || 'Signaly', {
         body: data.body || '',
-        icon: 'icon-192.png?v=1.1.6',
-        badge: 'icon-192.png?v=1.1.6',
+        icon: 'icon-192.png?v=1.1.7',
+        badge: 'icon-192.png?v=1.1.7',
         tag: data.id || undefined,
         data: {
           url: data.url || './',
