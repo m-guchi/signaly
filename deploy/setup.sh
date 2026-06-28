@@ -23,9 +23,7 @@ rsync -az --delete \
   ./ "$TARGET_DIR/"
 
 echo "==> Python 仮想環境を作成"
-python3 -m venv "$TARGET_DIR/.venv"
-"$TARGET_DIR/.venv/bin/pip" install --quiet --upgrade pip
-"$TARGET_DIR/.venv/bin/pip" install --quiet -r "$TARGET_DIR/backend/requirements.txt"
+bash "$TARGET_DIR/deploy/ensure_venv.sh" "$TARGET_DIR"
 
 echo "==> channels.json が存在しない場合は例をコピー"
 if [[ ! -f "$TARGET_DIR/backend/channels.json" ]]; then

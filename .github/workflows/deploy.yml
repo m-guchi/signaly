@@ -114,7 +114,7 @@ jobs:
             sync_env_var DB_HOST     '$(b64 "$DB_HOST")'
             sync_env_var DB_PORT     '$(b64 "$DB_PORT")'
 
-            .venv/bin/pip install --quiet -r backend/requirements.txt
+            bash deploy/ensure_venv.sh "${TARGET_DIR}"
 
             sed "s|{{TARGET_DIR}}|${TARGET_DIR}|g" \
               deploy/signaly.service.template | sudo tee /etc/systemd/system/signaly.service > /dev/null

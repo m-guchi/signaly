@@ -1,8 +1,15 @@
 'use strict'
 
-const APP_VERSION = '1.0.2'
+const APP_VERSION = '1.0.3'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.0.3',
+    date: '2026-06-29',
+    changes: [
+      '初回デプロイ時にサーバー環境を自動セットアップするよう改善',
+    ],
+  },
   {
     version: '1.0.2',
     date: '2026-06-29',
