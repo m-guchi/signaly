@@ -47,9 +47,10 @@ def main() -> None:
     print("# 以下を .env.local に追加してください")
     print(f"VAPID_PUBLIC_KEY={app_server_key}")
     print(f'VAPID_PRIVATE_KEY={private_one_line}')
+    print(f"VAPID_PRIVATE_KEY_FILE={BACKEND / 'private_key.pem'}")
     print(f"VAPID_SUBJECT={subject}")
     print()
-    print("# PEM ファイル (backend/private_key.pem) は git 管理外にしてください")
+    print("# PEM ファイル方式（推奨）: VAPID_PRIVATE_KEY の代わりに VAPID_PRIVATE_KEY_FILE を使えます")
 
 
 if __name__ == "__main__":

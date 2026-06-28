@@ -3,8 +3,10 @@
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Any, Dict, List
 
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from py_vapid import Vapid02
 from pywebpush import WebPushException, webpush
 
@@ -14,18 +16,34 @@ logger = logging.getLogger(__name__)
 
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_PRIVATE_KEY_FILE = os.getenv("VAPID_PRIVATE_KEY_FILE", "")
 VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "")
 
 
+def validate_push_config() -> None:
+    """起動時に VAPID 鍵が読めるか確認する"""
+    _load_vapid()
+
+
 def push_configured() -> bool:
-    return bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY and VAPID_SUBJECT)
+    return bool(VAPID_PUBLIC_KEY and VAPID_SUBJECT and (VAPID_PRIVATE_KEY or VAPID_PRIVATE_KEY_FILE))
+
+
+def _pem_bytes() -> bytes:
+    if VAPID_PRIVATE_KEY_FILE:
+        path = Path(VAPID_PRIVATE_KEY_FILE)
+        if path.is_file():
+            return path.read_bytes()
+    raw = (VAPID_PRIVATE_KEY or "").strip().strip("'").strip('"').replace("\\n", "\n")
+    if not raw:
+        raise ValueError("VAPID private key is not configured")
+    return raw.encode()
 
 
 def _load_vapid() -> Vapid02:
-    pem = VAPID_PRIVATE_KEY.replace("\\n", "\n").encode()
-    vapid = Vapid02()
-    vapid.from_pem(pem)
-    return vapid
+    # py_vapid.from_pem は標準 PEM を正しく読めないため cryptography で読み込む
+    private_key = load_pem_private_key(_pem_bytes(), password=None)
+    return Vapid02(private_key=private_key)
 
 
 def _notification_body(entry: Dict[str, Any]) -> str:

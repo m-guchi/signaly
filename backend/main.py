@@ -1,6 +1,7 @@
 import json
 import asyncio
 import hashlib
+import logging
 import os
 import secrets
 import urllib.parse
@@ -19,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
 from database import Channel, Notification, PushSubscription, get_session, init_db
-from push import push_configured, send_push_notifications
+from push import push_configured, send_push_notifications, validate_push_config
 
 BASE_DIR = Path(__file__).parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
@@ -184,6 +185,12 @@ def _delete_push_subscription(endpoint: str) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    if push_configured():
+        try:
+            await asyncio.to_thread(validate_push_config)
+            logging.info("Web Push (VAPID) configured OK")
+        except Exception:
+            logging.exception("Web Push (VAPID) key load failed — push notifications disabled")
     yield
 
 
