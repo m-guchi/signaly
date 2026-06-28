@@ -63,6 +63,7 @@ const HIGHLIGHT_FADE_MS = 8000
 const LAST_READ_KEY = 'signaly-last-read'
 const LAST_CHANNEL_KEY = 'signaly-last-channel'
 const UNREAD_KEY = 'signaly-unread'
+const PUSH_DISABLED_KEY = 'signaly-push-disabled'
 const CHANNEL_TREE_KEY = 'signaly-channel-tree'
 const UNREAD_POLL_MS = 15000
 const NEW_CARD_FADE_MS = 60000
@@ -1480,10 +1481,85 @@ function pushSupported() {
   return 'serviceWorker' in navigator && 'PushManager' in window
 }
 
-async function subscribePush(forceNew = false) {
-  if (!pushSupported()) return false
+function isPushDisabledByUser() {
+  try {
+    return localStorage.getItem(PUSH_DISABLED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function setPushDisabledByUser(disabled) {
+  try {
+    if (disabled) localStorage.setItem(PUSH_DISABLED_KEY, '1')
+    else localStorage.removeItem(PUSH_DISABLED_KEY)
+  } catch {
+    // private モードなど
+  }
+}
+
+async function getBrowserPushSubscription() {
+  if (!pushSupported()) return null
+  const reg = await navigator.serviceWorker.ready
+  return reg.pushManager.getSubscription()
+}
+
+async function syncPushSubscription() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') {
+    pushSubscribed = false
+    return
+  }
+  if (!pushSupported()) {
+    pushSubscribed = false
+    return
+  }
+
+  if (isPushDisabledByUser()) {
+    try {
+      const sub = await getBrowserPushSubscription()
+      if (sub) {
+        const json = sub.toJSON()
+        await fetch(apiUrl('api/push/unsubscribe'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+        }).catch(() => {})
+        await sub.unsubscribe()
+      }
+    } catch {
+      // 端末側の解除に失敗しても UI は無効のままにする
+    }
+    pushSubscribed = false
+    return
+  }
 
   try {
+    const sub = await getBrowserPushSubscription()
+    if (!sub) {
+      pushSubscribed = false
+      return
+    }
+    const json = sub.toJSON()
+    const res = await fetch(apiUrl('api/push/subscribe'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        endpoint: json.endpoint,
+        keys: json.keys,
+      }),
+    })
+    pushSubscribed = res.ok
+  } catch {
+    pushSubscribed = false
+  }
+}
+
+async function subscribePush(forceNew = false) {
+  if (!pushSupported()) return false
+  if (!('Notification' in window) || Notification.permission !== 'granted') return false
+
+  try {
+    setPushDisabledByUser(false)
     const reg = await navigator.serviceWorker.ready
 
     const keyRes = await fetch(apiUrl('api/push/vapid-public-key'))
@@ -1520,19 +1596,14 @@ async function subscribePush(forceNew = false) {
   }
 }
 
-async function syncPushSubscription() {
-  if (!('Notification' in window) || Notification.permission !== 'granted') {
-    pushSubscribed = false
-    return
-  }
-  await subscribePush()
-}
-
 async function unsubscribePush() {
-  if (!pushSupported()) return false
+  setPushDisabledByUser(true)
+  if (!pushSupported()) {
+    pushSubscribed = false
+    return true
+  }
   try {
-    const reg = await navigator.serviceWorker.ready
-    const sub = await reg.pushManager.getSubscription()
+    const sub = await getBrowserPushSubscription()
     if (sub) {
       const json = sub.toJSON()
       await fetch(apiUrl('api/push/unsubscribe'), {
@@ -1661,7 +1732,7 @@ async function requestServerTestPush(subscriptionJson) {
     detail = 'バックグラウンド通知の送信に失敗しました'
   }
   const needsReregister = res.status === 404 || res.status === 502
-  if (needsReregister) {
+  if (res.status === 404) {
     pushSubscribed = false
     SignalySettings.updateSettingsBtnState()
   }
