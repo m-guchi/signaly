@@ -1042,6 +1042,8 @@ async def push_test(
             detail += "。「再登録」を試してください"
         elif result.get("last_error") in ("BadJwtToken", "BadAuthorizationHeader"):
             detail += "。「再登録」を試してください"
+        else:
+            detail += "。「再登録」を試してください"
         raise HTTPException(status_code=502, detail=detail)
     return {"ok": True, **result}
 

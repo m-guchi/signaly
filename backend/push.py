@@ -1,5 +1,6 @@
 """Web Push 送信（VAPID）"""
 
+import base64
 import json
 import logging
 import os
@@ -8,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, load_pem_private_key
 from py_vapid import Vapid02
 from pywebpush import WebPushException, webpush
 
@@ -26,6 +27,12 @@ VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "")
 def validate_push_config() -> None:
     """起動時に VAPID 鍵が読めるか確認する"""
     _load_vapid()
+    configured = (VAPID_PUBLIC_KEY or "").strip().rstrip("=")
+    if not configured:
+        return
+    derived = _application_server_key_b64()
+    if derived.rstrip("=") != configured.rstrip("="):
+        raise ValueError("VAPID_PUBLIC_KEY が VAPID_PRIVATE_KEY と一致しません")
 
 
 def push_configured() -> bool:
@@ -47,6 +54,15 @@ def _load_vapid() -> Vapid02:
     # py_vapid.from_pem は標準 PEM を正しく読めないため cryptography で読み込む
     private_key = load_pem_private_key(_pem_bytes(), password=None)
     return Vapid02(private_key=private_key)
+
+
+def _application_server_key_b64() -> str:
+    vapid = _load_vapid()
+    pub_bytes = vapid.public_key.public_bytes(
+        encoding=Encoding.X962,
+        format=PublicFormat.UncompressedPoint,
+    )
+    return base64.urlsafe_b64encode(pub_bytes).decode().rstrip("=")
 
 
 def _plain_text(text: str) -> str:
@@ -137,6 +153,10 @@ def _build_test_payload() -> str:
     )
 
 
+def _vapid_private_key_pem() -> str:
+    return _pem_bytes().decode()
+
+
 def _vapid_claims_for_endpoint(endpoint: str) -> Dict[str, str]:
     parsed = urlparse(endpoint)
     return {
@@ -146,20 +166,24 @@ def _vapid_claims_for_endpoint(endpoint: str) -> Dict[str, str]:
 
 
 def _push_error_hint(exc: WebPushException) -> Optional[str]:
-    if exc.response is None:
-        return None
-    try:
-        data = exc.response.json()
-        if isinstance(data, dict) and data.get("reason"):
-            return str(data["reason"])
-    except Exception:
-        pass
-    text = (exc.response.text or "").strip()
-    return text[:120] if text else None
+    if exc.response is not None:
+        try:
+            data = exc.response.json()
+            if isinstance(data, dict) and data.get("reason"):
+                return str(data["reason"])
+        except Exception:
+            pass
+        text = (exc.response.text or "").strip()
+        if text:
+            return text[:120]
+    message = str(exc).strip()
+    if message.startswith("Push failed:"):
+        message = message.split("\n", 1)[0]
+    return message[:120] if message else None
 
 
 def _deliver_push_result(
-    sub: Dict[str, str], payload: str, vapid: Vapid02
+    sub: Dict[str, str], payload: str, vapid_pem: str
 ) -> Tuple[bool, Optional[int], Optional[str]]:
     subscription_info = {
         "endpoint": sub["endpoint"],
@@ -169,8 +193,8 @@ def _deliver_push_result(
         webpush(
             subscription_info=subscription_info,
             data=payload,
-            vapid_private_key=vapid,
-            vapid_claims=_vapid_claims_for_endpoint(sub["endpoint"]),
+            vapid_private_key=vapid_pem,
+            vapid_claims=dict(_vapid_claims_for_endpoint(sub["endpoint"])),
             ttl=60,
         )
         return True, None, None
@@ -182,18 +206,18 @@ def _deliver_push_result(
             "Web Push failed (%s): %s — %s",
             status,
             sub["endpoint"][:60],
-            body,
+            body or hint,
         )
         if status in (403, 404, 410):
             _delete_subscription(sub["id"])
         return False, status, hint
-    except Exception:
+    except Exception as exc:
         logger.exception("Web Push error: %s", sub["endpoint"][:60])
-        return False, None, None
+        return False, None, str(exc)[:120]
 
 
-def _deliver_push(sub: Dict[str, str], payload: str, vapid: Vapid02) -> bool:
-    return _deliver_push_result(sub, payload, vapid)[0]
+def _deliver_push(sub: Dict[str, str], payload: str, vapid_pem: str) -> bool:
+    return _deliver_push_result(sub, payload, vapid_pem)[0]
 
 
 def send_test_push_to_user(email: str, endpoint: Optional[str] = None) -> Dict[str, Any]:
@@ -208,14 +232,14 @@ def send_test_push_to_user(email: str, endpoint: Optional[str] = None) -> Dict[s
         return {"sent": 0, "failed": 0, "error": "no_subscription"}
 
     payload = _build_test_payload()
-    vapid = _load_vapid()
+    vapid_pem = _vapid_private_key_pem()
     sent = 0
     failed = 0
     removed = 0
     last_status: Optional[int] = None
     last_error: Optional[str] = None
     for sub in subs:
-        ok, status, hint = _deliver_push_result(sub, payload, vapid)
+        ok, status, hint = _deliver_push_result(sub, payload, vapid_pem)
         if ok:
             sent += 1
         else:
@@ -244,12 +268,12 @@ def send_push_notifications(entry: Dict[str, Any]) -> None:
         return
 
     payload = _build_payload(entry)
-    vapid = _load_vapid()
+    vapid_pem = _vapid_private_key_pem()
 
     channel_name = entry.get("channel", "")
 
     for sub in subs:
         if channel_name and not resolve_notification_enabled(sub["email"], channel_name):
             continue
-        if not _deliver_push(sub, payload, vapid):
+        if not _deliver_push(sub, payload, vapid_pem):
             pass

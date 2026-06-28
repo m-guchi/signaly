@@ -1554,8 +1554,7 @@ async function requestServerTestPush(subscriptionJson) {
   if (typeof detail !== 'string') {
     detail = 'バックグラウンド通知の送信に失敗しました'
   }
-  const needsReregister = res.status === 404
-    || (res.status === 502 && detail.includes('再登録'))
+  const needsReregister = res.status === 404 || res.status === 502
   if (needsReregister) {
     pushSubscribed = false
     SignalySettings.updateSettingsBtnState()
@@ -1568,25 +1567,21 @@ async function sendServerTestPush() {
     return { ok: false, message: 'この端末は Push 非対応です' }
   }
 
-  await subscribePush(false)
-
   const reg = await navigator.serviceWorker.ready
-  let sub = await reg.pushManager.getSubscription()
+  if (!(await subscribePush(true))) {
+    return {
+      ok: false,
+      message: 'Push 登録に失敗しました。「有効」を試してください。',
+      needsReregister: true,
+    }
+  }
+
+  const sub = await reg.pushManager.getSubscription()
   if (!sub) {
     return { ok: false, message: 'Push 登録がありません。「有効」を試してください。', needsReregister: true }
   }
 
-  let result = await requestServerTestPush(sub.toJSON())
-  if (!result.ok && result.needsReregister) {
-    const renewed = await subscribePush(true)
-    if (renewed) {
-      sub = await reg.pushManager.getSubscription()
-      if (sub) {
-        result = await requestServerTestPush(sub.toJSON())
-      }
-    }
-  }
-
+  const result = await requestServerTestPush(sub.toJSON())
   if (result.ok) {
     pushSubscribed = true
     SignalySettings.updateSettingsBtnState()
@@ -1627,7 +1622,7 @@ async function sendTestNotification() {
         mode: 'local',
         message: serverResult.message
           ? `通知は表示されました。${serverResult.message}`
-          : '通知は表示されました。アプリを閉じた状態での通知は届いていない可能性があります。「再登録」を試してください。',
+          : '通知は表示されました。アプリを閉じた状態での通知は届いていない可能性があります。「再登録」を押してから、もう一度テストしてください。',
       }
     }
     return { ok: true, mode: 'local' }
