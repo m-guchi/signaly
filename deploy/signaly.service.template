@@ -5,9 +5,9 @@ After=network.target
 [Service]
 Type=simple
 User=www-data
-WorkingDirectory=/apps/signaly/backend
-EnvironmentFile=/apps/signaly/.env
-ExecStart=/apps/signaly/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8001
+WorkingDirectory={{APP_DIR}}/backend
+EnvironmentFile={{APP_DIR}}/.env
+ExecStart={{APP_DIR}}/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8002
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1

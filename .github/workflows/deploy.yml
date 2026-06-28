@@ -22,6 +22,7 @@ jobs:
           SSH_HOST:               op://apps/Server/hostname
           SSH_USER:               op://apps/Server/username
           DISCORD_CI_WEBHOOK_URL: op://apps/discord_webhook/CI_URL
+          APP_DIR:                op://apps/signaly/deploy-dir
           DB_NAME:                op://apps/signaly/db-name
           DB_USER:                op://apps/DB/db-user
           DB_PASSWORD:            op://apps/DB/db-password
@@ -36,6 +37,7 @@ jobs:
 
       - name: VPS にデプロイ
         env:
+          APP_DIR:     ${{ env.APP_DIR }}
           DB_NAME:     ${{ env.DB_NAME }}
           DB_USER:     ${{ env.DB_USER }}
           DB_PASSWORD: ${{ env.DB_PASSWORD }}
@@ -46,13 +48,13 @@ jobs:
             --exclude='.git' \
             --exclude='.venv' \
             --exclude='backend/channels.json' \
-            ./ ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:/apps/signaly/
+            ./ ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:${APP_DIR}/
 
           b64() { printf '%s' "$1" | base64 -w 0; }
 
           ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} << EOF
             set -e
-            cd /apps/signaly
+            cd "${APP_DIR}"
 
             # .env に DB 接続情報を書き込む（既存行を上書き）
             sync_env_var() {
@@ -72,6 +74,10 @@ jobs:
             sync_env_var DB_PORT     '$(b64 "$DB_PORT")'
 
             .venv/bin/pip install --quiet -r backend/requirements.txt
+
+            sed "s|{{APP_DIR}}|${APP_DIR}|g" \
+              deploy/signaly.service.template | sudo tee /etc/systemd/system/signaly.service > /dev/null
+            sudo systemctl daemon-reload
             sudo systemctl restart signaly
           EOF
 
