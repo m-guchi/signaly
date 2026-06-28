@@ -117,7 +117,6 @@ def send_push_notifications(entry: Dict[str, Any]) -> None:
 
     payload = _build_payload(entry)
     vapid = _load_vapid()
-    claims = {"sub": VAPID_SUBJECT}
 
     for sub in subs:
         subscription_info = {
@@ -125,15 +124,24 @@ def send_push_notifications(entry: Dict[str, Any]) -> None:
             "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},
         }
         try:
+            # pywebpush は vapid_claims を破壊的に更新する（aud/exp を追加）。
+            # 複数端末へ送るとき dict を再利用すると、先の FCM 用 aud が
+            # Apple 送信に残り 403 になる。
             webpush(
                 subscription_info=subscription_info,
                 data=payload,
                 vapid_private_key=vapid,
-                vapid_claims=claims,
+                vapid_claims={"sub": VAPID_SUBJECT},
             )
         except WebPushException as exc:
             status = exc.response.status_code if exc.response is not None else None
-            logger.warning("Web Push failed (%s): %s", status, sub["endpoint"][:60])
+            body = (exc.response.text or "")[:200] if exc.response is not None else ""
+            logger.warning(
+                "Web Push failed (%s): %s — %s",
+                status,
+                sub["endpoint"][:60],
+                body,
+            )
             if status in (403, 404, 410):
                 _delete_subscription(sub["id"])
         except Exception:
