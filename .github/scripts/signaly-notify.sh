@@ -4,7 +4,7 @@
 # 各アプリの .github/scripts/ にコピーして使用する。
 #
 # Requires: SIGNALY_WEBHOOK_URL, NOTIFY_STATUS (success|failure|cancelled)
-# Optional: NOTIFY_APP, NOTIFY_KIND (e.g. デプロイ / CI), NOTIFY_JOB
+# Optional: NOTIFY_APP, NOTIFY_KIND (e.g. デプロイ / CI), NOTIFY_JOB, NOTIFY_VERSION (リリース時)
 set -euo pipefail
 
 if [[ -z "${SIGNALY_WEBHOOK_URL:-}" ]]; then
@@ -17,6 +17,7 @@ app_name="${NOTIFY_APP:-}"
 kind="${NOTIFY_KIND:-}"
 workflow_name="${NOTIFY_WORKFLOW:-${GITHUB_WORKFLOW:-GitHub Actions}}"
 job_name="${NOTIFY_JOB:-${GITHUB_JOB:-}}"
+version="${NOTIFY_VERSION:-}"
 repository="${GITHUB_REPOSITORY:-}"
 ref_name="${GITHUB_REF_NAME:-}"
 sha="${GITHUB_SHA:-}"
@@ -47,7 +48,11 @@ case "$status" in
 esac
 
 if [[ -n "$app_name" && -n "$kind" ]]; then
-  title="${emoji} [${app_name}] ${kind} ${status_label}"
+  if [[ "$kind" == "リリース" && -n "$version" ]]; then
+    title="${emoji} [${app_name}] ${kind} ${version} ${status_label}"
+  else
+    title="${emoji} [${app_name}] ${kind} ${status_label}"
+  fi
 elif [[ -n "$app_name" ]]; then
   title="${emoji} [${app_name}] ${workflow_name} ${status_label}"
 else
@@ -59,6 +64,7 @@ export NOTIFY_APP="$app_name"
 export NOTIFY_KIND="$kind"
 export NOTIFY_WORKFLOW="$workflow_name"
 export NOTIFY_JOB="$job_name"
+export NOTIFY_VERSION="$version"
 export REPOSITORY="$repository"
 export SHA_SHORT="$sha_short"
 export RUN_URL="$run_url"
@@ -71,6 +77,7 @@ import os
 
 app_name = os.environ.get("NOTIFY_APP", "")
 kind = os.environ.get("NOTIFY_KIND", "")
+version = os.environ.get("NOTIFY_VERSION", "")
 job_name = os.environ.get("NOTIFY_JOB", "")
 event_name = os.environ.get("GITHUB_EVENT_NAME", "")
 repository = os.environ.get("REPOSITORY", "")
@@ -86,6 +93,8 @@ if app_name:
     fields.append({"name": "App", "value": app_name, "inline": True})
 if kind:
     fields.append({"name": "Type", "value": kind, "inline": True})
+if version:
+    fields.append({"name": "Version", "value": f"`{version}`", "inline": True})
 if repository:
     fields.append({"name": "Repository", "value": f"`{repository}`", "inline": True})
 if ref_name:
