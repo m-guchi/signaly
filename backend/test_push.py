@@ -7,13 +7,14 @@ from push import send_push_notifications, send_test_push_to_user, VAPID_SUBJECT
 
 
 class TestSendPushNotifications(unittest.TestCase):
+    @patch("push._vapid_private_key_pem", return_value="fake-pem")
     @patch("push.resolve_notification_enabled", return_value=True)
     @patch("push.webpush")
     @patch("push._load_vapid")
     @patch("push._fetch_subscriptions")
     @patch("push.push_configured", return_value=True)
     def test_vapid_claims_are_not_reused_across_subscriptions(
-        self, _configured, fetch_subs, _load_vapid, webpush, _resolve
+        self, _configured, fetch_subs, _load_vapid, webpush, _resolve, _pem
     ):
         """各端末へ渡す vapid_claims が別オブジェクトであること"""
         fetch_subs.return_value = [
@@ -58,13 +59,14 @@ class TestSendPushNotifications(unittest.TestCase):
         self.assertEqual(captured[0]["aud"], "https://fcm.googleapis.com")
         self.assertEqual(captured[1]["aud"], "https://web.push.apple.com")
 
+    @patch("push._vapid_private_key_pem", return_value="fake-pem")
     @patch("push.resolve_notification_enabled")
     @patch("push.webpush")
     @patch("push._load_vapid")
     @patch("push._fetch_subscriptions")
     @patch("push.push_configured", return_value=True)
     def test_skips_disabled_users(
-        self, _configured, fetch_subs, _load_vapid, webpush, resolve_enabled
+        self, _configured, fetch_subs, _load_vapid, webpush, resolve_enabled, _pem
     ):
         fetch_subs.return_value = [
             {
@@ -114,11 +116,12 @@ class TestSendTestPushToUser(unittest.TestCase):
         result = send_test_push_to_user("user@example.com")
         self.assertEqual(result["error"], "no_subscription")
 
+    @patch("push._vapid_private_key_pem", return_value="fake-pem")
     @patch("push.webpush")
     @patch("push._load_vapid")
     @patch("push._fetch_subscriptions_for_email")
     @patch("push.push_configured", return_value=True)
-    def test_sends_to_user_subscriptions(self, _configured, fetch_subs, _load_vapid, webpush):
+    def test_sends_to_user_subscriptions(self, _configured, fetch_subs, _load_vapid, webpush, _pem):
         fetch_subs.return_value = [
             {
                 "id": "1",
@@ -133,11 +136,12 @@ class TestSendTestPushToUser(unittest.TestCase):
         self.assertEqual(result["failed"], 0)
         self.assertEqual(webpush.call_count, 1)
 
+    @patch("push._vapid_private_key_pem", return_value="fake-pem")
     @patch("push.webpush")
     @patch("push._load_vapid")
     @patch("push._fetch_subscriptions_for_email")
     @patch("push.push_configured", return_value=True)
-    def test_filters_by_endpoint(self, _configured, fetch_subs, _load_vapid, webpush):
+    def test_filters_by_endpoint(self, _configured, fetch_subs, _load_vapid, webpush, _pem):
         fetch_subs.return_value = [
             {
                 "id": "1",
