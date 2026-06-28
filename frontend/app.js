@@ -2,9 +2,18 @@
 
 // ── State ────────────────────────────────────────────────────────────────────
 
+function apiUrl(path) {
+  const base = location.pathname.endsWith('/')
+    ? location.pathname
+    : `${location.pathname}/`
+  return base + path.replace(/^\//, '')
+}
+
 let activeChannel = null
 let eventSource = null
 let unread = {}  // channel_name -> count
+const seenIds = new Set()
+let pollTimer = null
 
 // ── DOM ──────────────────────────────────────────────────────────────────────
 
@@ -148,6 +157,9 @@ function createCard(entry) {
 }
 
 function prependCard(entry) {
+  if (seenIds.has(entry.id)) return
+  seenIds.add(entry.id)
+
   const card = createCard(entry)
   if (feed.firstChild) {
     feed.insertBefore(card, feed.firstChild)
@@ -225,20 +237,19 @@ async function selectChannel(name) {
   channelTitle.textContent = `# ${name}`
   feed.innerHTML = ''
   emptyState.hidden = true
+  seenIds.clear()
   setStatus('connecting')
 
-  // 履歴を読み込む
-  await loadHistory(name)
-
-  // SSE 接続を張り替える
+  // SSE を先に張り、履歴読み込み中の通知取りこぼしを防ぐ
   connectSSE(name)
+  await loadHistory(name)
 
   closeSidebar()
 }
 
 async function loadHistory(channelName) {
   try {
-    const res = await fetch(`api/history/${channelName}`)
+    const res = await fetch(apiUrl(`api/history/${channelName}`))
     if (!res.ok) return
     const { logs } = await res.json()
     if (!logs.length) {
@@ -247,6 +258,8 @@ async function loadHistory(channelName) {
     }
     // 古い順に並んでいるので reverse して新しい順に挿入
     for (const entry of [...logs].reverse()) {
+      if (seenIds.has(entry.id)) continue
+      seenIds.add(entry.id)
       feed.appendChild(createCard(entry))
     }
     // 最新が上になるよう先頭にスクロール
@@ -258,18 +271,55 @@ async function loadHistory(channelName) {
 
 // ── SSE ──────────────────────────────────────────────────────────────────────
 
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+async function pollNewEntries(channelName) {
+  if (activeChannel !== channelName) return
+  try {
+    const res = await fetch(apiUrl(`api/history/${channelName}?limit=30`))
+    if (!res.ok) return
+    const { logs } = await res.json()
+    let added = false
+    for (const entry of [...logs].reverse()) {
+      if (seenIds.has(entry.id)) continue
+      if (activeChannel === entry.channel) {
+        prependCard(entry)
+        added = true
+      }
+    }
+    if (added) feed.scrollTop = 0
+  } catch {
+    // サイレントに無視
+  }
+}
+
+function startPolling(channelName) {
+  stopPolling()
+  // SSE がプロキシでバッファされる場合のフォールバック
+  pollTimer = setInterval(() => pollNewEntries(channelName), 5000)
+}
+
 function connectSSE(channelName) {
   if (eventSource) {
     eventSource.close()
     eventSource = null
   }
+  stopPolling()
 
-  const url = `api/stream/${channelName}`
+  const url = apiUrl(`api/stream/${channelName}`)
   const es = new EventSource(url)
   eventSource = es
 
   es.onopen = () => {
-    if (activeChannel === channelName) setStatus('connected')
+    if (activeChannel === channelName) {
+      setStatus('connected')
+      startPolling(channelName)
+    }
   }
 
   es.onmessage = (event) => {
@@ -452,7 +502,7 @@ createChannelForm?.addEventListener('submit', async (e) => {
   submitBtn.disabled = true
 
   try {
-    const res = await fetch('api/channels', {
+    const res = await fetch(apiUrl('api/channels'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -477,7 +527,7 @@ createChannelForm?.addEventListener('submit', async (e) => {
     createChannelSuccessName.textContent = data.name
     createChannelWebhook.value = data.webhook_url
 
-    const listRes = await fetch('api/channels')
+    const listRes = await fetch(apiUrl('api/channels'))
     if (listRes.ok) {
       const { channels } = await listRes.json()
       renderChannels(channels, data.name)
@@ -507,7 +557,7 @@ const loginOverlay = document.getElementById('login-overlay')
 
 async function checkAuth() {
   try {
-    const res = await fetch('auth/me')
+    const res = await fetch(apiUrl('auth/me'))
     if (res.ok) return true
   } catch {
     // ネットワーク失敗時はサイレントに無視
@@ -526,7 +576,7 @@ function addLogoutButton() {
     <line x1="21" y1="12" x2="9" y2="12"/>
   </svg>`
   btn.addEventListener('click', async () => {
-    await fetch('auth/logout', { method: 'POST' })
+    await fetch(apiUrl('auth/logout'), { method: 'POST' })
     location.reload()
   })
   document.querySelector('.sidebar-header').appendChild(btn)
@@ -537,6 +587,9 @@ function addLogoutButton() {
 async function init() {
   updateNotifBtnState()
 
+  const loginLink = document.getElementById('login-link')
+  if (loginLink) loginLink.href = apiUrl('auth/login')
+
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {})
   }
@@ -544,7 +597,7 @@ async function init() {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
   try {
-    const res = await fetch('api/channels', { signal: controller.signal })
+    const res = await fetch(apiUrl('api/channels'), { signal: controller.signal })
     clearTimeout(timeout)
     if (res.status === 401) {
       loginOverlay.classList.add('visible')

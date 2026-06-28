@@ -1,5 +1,4 @@
 import os
-from datetime import datetime
 
 from sqlalchemy import Column, DateTime, String, Text, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session
@@ -18,6 +17,15 @@ engine = create_engine(
 
 class Base(DeclarativeBase):
     pass
+
+
+class Channel(Base):
+    __tablename__ = "channels"
+
+    id = Column(String(36), primary_key=True)
+    name = Column(String(100), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
 
 
 class Notification(Base):
