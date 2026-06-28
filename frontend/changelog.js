@@ -1,8 +1,16 @@
 'use strict'
 
-const APP_VERSION = '1.1.2'
+const APP_VERSION = '1.1.3'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.1.3',
+    date: '2026-06-29',
+    changes: [
+      '通知テスト時に、バックグラウンド通知の登録を自動で更新してから送信するようにした',
+      'バックグラウンド通知が失敗したとき、原因をわかりやすく表示するようにした',
+    ],
+  },
   {
     version: '1.1.2',
     date: '2026-06-29',
