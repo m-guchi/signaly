@@ -64,6 +64,43 @@ def _create_channel(name: str) -> Dict[str, str]:
     return {"id": channel_id, "name": name}
 
 
+def _update_channel(channel_id: str, name: str) -> Optional[Dict[str, str]]:
+    now = datetime.now(timezone.utc)
+    with get_session() as session:
+        row = session.query(Channel).filter(Channel.id == channel_id).first()
+        if not row:
+            return None
+        old_name = row.name
+        if old_name != name and session.query(Channel).filter(Channel.name == name).first():
+            raise ValueError("duplicate")
+        row.name = name
+        row.updated_at = now
+        if old_name != name:
+            session.query(Notification).filter(Notification.channel == old_name).update(
+                {Notification.channel: name},
+                synchronize_session=False,
+            )
+        session.commit()
+    if old_name != name and old_name in _subscribers:
+        _subscribers[name] = _subscribers.pop(old_name)
+    return {"id": channel_id, "name": name}
+
+
+def _delete_channel(channel_id: str) -> Optional[str]:
+    with get_session() as session:
+        row = session.query(Channel).filter(Channel.id == channel_id).first()
+        if not row:
+            return None
+        name = row.name
+        session.query(Notification).filter(Notification.channel == name).delete(
+            synchronize_session=False,
+        )
+        session.delete(row)
+        session.commit()
+    _subscribers.pop(name, None)
+    return name
+
+
 def _resolve_api_key_email(key: str) -> Optional[str]:
     key_hash = auth.hash_secret(key)
     now = datetime.now(timezone.utc)
@@ -232,7 +269,7 @@ app = FastAPI(title="Signaly", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET", "POST", "DELETE"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -449,6 +486,30 @@ async def create_channel(
         raise HTTPException(status_code=409, detail="同じ名前のチャンネルが既に存在します")
 
     return _channel_item(request, created["id"], created["name"])
+
+
+@app.patch("/api/channels/{channel_id}")
+async def update_channel(
+    channel_id: str,
+    request: Request,
+    body: CreateChannelRequest,
+    email: str = Depends(auth.require_auth),
+):
+    try:
+        updated = await asyncio.to_thread(_update_channel, channel_id, body.name)
+    except ValueError:
+        raise HTTPException(status_code=409, detail="同じ名前のチャンネルが既に存在します")
+    if not updated:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    return _channel_item(request, updated["id"], updated["name"])
+
+
+@app.delete("/api/channels/{channel_id}")
+async def delete_channel(channel_id: str, email: str = Depends(auth.require_auth)):
+    name = await asyncio.to_thread(_delete_channel, channel_id)
+    if not name:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    return {"ok": True, "name": name}
 
 
 @app.get("/api/history/{channel_name}")

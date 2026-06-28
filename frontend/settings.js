@@ -1,0 +1,333 @@
+'use strict'
+
+const THEME_KEY = 'signaly-theme'
+
+const SignalySettings = {
+  apiUrl: (path) => '/' + String(path).replace(/^\//, ''),
+  closeSidebar: () => {},
+  notifications: null,
+
+  init(options = {}) {
+    if (options.apiUrl) this.apiUrl = options.apiUrl
+    if (options.closeSidebar) this.closeSidebar = options.closeSidebar
+    if (options.notifications) this.notifications = options.notifications
+
+    this.setupTheme()
+    this.setupDialog()
+    this.setupChangelog()
+    this.renderChangelog()
+  },
+
+  showAuthenticated() {
+    const btn = document.getElementById('settings-btn')
+    if (btn) btn.hidden = false
+  },
+
+  updateSettingsBtnState() {
+    const btn = document.getElementById('settings-btn')
+    if (!btn) return
+    const notif = this.notifications
+    if (notif?.isSupported?.() && Notification.permission === 'granted') {
+      btn.classList.add('notif-active')
+    } else {
+      btn.classList.remove('notif-active')
+    }
+  },
+
+  // ── Theme ──────────────────────────────────────────────────────────────────
+
+  setupTheme() {
+    const saved = localStorage.getItem(THEME_KEY) || 'system'
+    this.applyTheme(saved)
+
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (this.getTheme() === 'system') this.applyTheme('system')
+    })
+
+    document.querySelectorAll('.theme-segment-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.applyTheme(btn.dataset.theme)
+      })
+    })
+  },
+
+  getTheme() {
+    return localStorage.getItem(THEME_KEY) || 'system'
+  },
+
+  applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem(THEME_KEY, theme)
+    document.querySelectorAll('.theme-segment-btn').forEach((btn) => {
+      const active = btn.dataset.theme === theme
+      btn.classList.toggle('active', active)
+      btn.setAttribute('aria-checked', active ? 'true' : 'false')
+    })
+  },
+
+  // ── Settings dialog ────────────────────────────────────────────────────────
+
+  setupDialog() {
+    const settingsBtn = document.getElementById('settings-btn')
+    const settingsDialog = document.getElementById('settings-dialog')
+    const settingsClose = document.getElementById('settings-close')
+    const logoutBtn = document.getElementById('settings-logout-btn')
+    const versionText = document.getElementById('settings-version-text')
+    const changelogBtn = document.getElementById('settings-changelog-btn')
+    const changelogOverlay = document.getElementById('settings-changelog-overlay')
+    const changelogClose = document.getElementById('settings-changelog-close')
+
+    settingsBtn?.addEventListener('click', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      this.openSettingsDialog()
+    })
+
+    settingsClose?.addEventListener('click', () => this.closeSettingsDialog())
+
+    settingsDialog?.addEventListener('click', (e) => {
+      if (e.target === settingsDialog) this.closeSettingsDialog()
+    })
+
+    logoutBtn?.addEventListener('click', async () => {
+      await fetch(this.apiUrl('auth/logout'), { method: 'POST' })
+      location.reload()
+    })
+
+    changelogBtn?.addEventListener('click', () => this.openSettingsChangelog())
+    changelogClose?.addEventListener('click', () => this.closeSettingsChangelog())
+    changelogOverlay?.addEventListener('click', (e) => {
+      if (e.target === changelogOverlay) this.closeSettingsChangelog()
+    })
+
+    if (typeof APP_VERSION !== 'undefined' && versionText) {
+      versionText.textContent = `v${APP_VERSION}`
+    }
+
+    this.setupNotifSection()
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return
+      if (changelogOverlay && !changelogOverlay.hidden) {
+        this.closeSettingsChangelog()
+        return
+      }
+      if (settingsDialog?.classList.contains('open')) {
+        this.closeSettingsDialog()
+      }
+    })
+  },
+
+  openSettingsChangelog() {
+    const overlay = document.getElementById('settings-changelog-overlay')
+    if (!overlay) return
+    overlay.hidden = false
+  },
+
+  closeSettingsChangelog() {
+    const overlay = document.getElementById('settings-changelog-overlay')
+    if (!overlay) return
+    overlay.hidden = true
+  },
+
+  openSettingsDialog() {
+    const dialog = document.getElementById('settings-dialog')
+    if (!dialog) return
+    this.closeSidebar()
+    this.closeSettingsChangelog()
+    this.renderNotifSettings()
+    SignalyDialog.open(dialog)
+    const body = dialog.querySelector('.settings-body')
+    if (body) body.scrollTop = 0
+  },
+
+  closeSettingsDialog() {
+    this.closeSettingsChangelog()
+    SignalyDialog.close(document.getElementById('settings-dialog'))
+  },
+
+  // ── Notification settings ──────────────────────────────────────────────────
+
+  setupNotifSection() {
+    const section = document.getElementById('settings-notif-section')
+    if (!section) return
+
+    if (!this.notifications?.isSupported?.()) {
+      section.hidden = true
+      return
+    }
+
+    document.getElementById('notif-enable-btn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('notif-enable-btn')
+      btn.disabled = true
+      try {
+        await Notification.requestPermission()
+        if (Notification.permission === 'granted') {
+          await this.notifications.subscribePush(true)
+        }
+        this.updateSettingsBtnState()
+        this.renderNotifSettings()
+        this.notifications.onStateChange?.()
+      } finally {
+        btn.disabled = false
+      }
+    })
+
+    document.getElementById('notif-reregister-btn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('notif-reregister-btn')
+      btn.disabled = true
+      try {
+        await this.notifications.subscribePush(true)
+        this.updateSettingsBtnState()
+        this.renderNotifSettings()
+        this.notifications.onStateChange?.()
+      } finally {
+        btn.disabled = false
+      }
+    })
+
+    document.getElementById('notif-disable-btn')?.addEventListener('click', async () => {
+      const btn = document.getElementById('notif-disable-btn')
+      btn.disabled = true
+      try {
+        await this.notifications.unsubscribePush()
+        this.updateSettingsBtnState()
+        this.renderNotifSettings()
+        this.notifications.onStateChange?.()
+      } finally {
+        btn.disabled = false
+      }
+    })
+  },
+
+  detectMobilePlatform() {
+    const ua = navigator.userAgent
+    if (/iPhone|iPad|iPod/.test(ua)) return 'ios'
+    if (/Android/.test(ua)) return 'android'
+    return 'desktop'
+  },
+
+  osSettingsHintText() {
+    const platform = this.detectMobilePlatform()
+    if (platform === 'ios') {
+      return '設定 → 通知 → Signaly で「通知を許可」をオンにしてください。ホーム画面に追加した PWA から開いている必要があります。'
+    }
+    if (platform === 'android') {
+      return '設定 → アプリ → Signaly → 通知 で通知をオンにしてください。'
+    }
+    return 'ブラウザのアドレスバー左のアイコン → サイトの設定 → 通知 で許可してください。'
+  },
+
+  renderNotifSettings() {
+    const section = document.getElementById('settings-notif-section')
+    if (!section || section.hidden) return
+
+    const permEl = document.getElementById('notif-status-permission')
+    const pushEl = document.getElementById('notif-status-push')
+    const messageEl = document.getElementById('notif-settings-message')
+    const enableBtn = document.getElementById('notif-enable-btn')
+    const reregisterBtn = document.getElementById('notif-reregister-btn')
+    const disableBtn = document.getElementById('notif-disable-btn')
+    const osHint = document.getElementById('notif-os-hint')
+    const osHintText = document.getElementById('notif-os-hint-text')
+    if (!permEl || !pushEl || !messageEl || !enableBtn || !reregisterBtn || !disableBtn) return
+
+    const permission = Notification.permission
+    const canPush = this.notifications?.pushSupported?.() ?? false
+    const pushSubscribed = this.notifications?.getPushSubscribed?.() ?? false
+
+    permEl.textContent = permission === 'granted' ? '許可済み'
+      : permission === 'denied' ? 'ブロック中' : '未設定'
+    permEl.className = permission === 'granted' ? 'notif-status--ok'
+      : permission === 'denied' ? 'notif-status--bad' : 'notif-status--warn'
+
+    if (!canPush) {
+      pushEl.textContent = '非対応'
+      pushEl.className = 'notif-status--bad'
+    } else if (pushSubscribed) {
+      pushEl.textContent = '有効（バックグラウンド対応）'
+      pushEl.className = 'notif-status--ok'
+    } else if (permission === 'granted') {
+      pushEl.textContent = '未登録'
+      pushEl.className = 'notif-status--warn'
+    } else {
+      pushEl.textContent = '—'
+      pushEl.className = ''
+    }
+
+    enableBtn.hidden = permission !== 'default'
+    if (permission === 'granted' && canPush) {
+      reregisterBtn.hidden = false
+      reregisterBtn.textContent = pushSubscribed
+        ? 'Push 通知を再登録する'
+        : 'Push 通知を有効にする'
+    } else {
+      reregisterBtn.hidden = true
+    }
+    disableBtn.hidden = !(permission === 'granted' && canPush && pushSubscribed)
+    disableBtn.textContent = 'Push 通知を無効にする'
+    osHint.hidden = permission !== 'denied'
+    osHintText.textContent = this.osSettingsHintText()
+
+    if (permission === 'granted' && pushSubscribed) {
+      messageEl.textContent = 'アプリを閉じていても通知が届きます。届かない場合は Push 通知を再登録してください。'
+    } else if (permission === 'granted') {
+      messageEl.textContent = '端末の通知は許可されています。Push を登録するとバックグラウンドでも届きます。'
+    } else if (permission === 'denied') {
+      messageEl.textContent = '通知がブロックされています。下の手順で端末の設定から許可してください。'
+    } else {
+      messageEl.textContent = '「通知を許可する」を押すと、端末の確認画面が開きます。'
+    }
+  },
+
+  // ── Changelog ──────────────────────────────────────────────────────────────
+
+  setupChangelog() {
+    const changelogDialog = document.getElementById('changelog-dialog')
+    const changelogClose = document.getElementById('changelog-close')
+
+    changelogClose?.addEventListener('click', () => {
+      changelogDialog?.classList.remove('open')
+    })
+
+    changelogDialog?.addEventListener('click', (e) => {
+      if (e.target === changelogDialog) changelogDialog.classList.remove('open')
+    })
+  },
+
+  renderChangelog() {
+    const entries = typeof APP_CHANGELOG !== 'undefined' ? APP_CHANGELOG : []
+    for (const listId of ['changelog-list', 'settings-changelog-list']) {
+      const list = document.getElementById(listId)
+      if (!list) continue
+      list.innerHTML = ''
+      for (const entry of entries) {
+        const section = document.createElement('div')
+        section.className = 'cl-entry'
+
+        const heading = document.createElement('div')
+        heading.className = 'cl-heading'
+        const ver = document.createElement('span')
+        ver.className = 'cl-version'
+        ver.textContent = `v${entry.version}`
+        const date = document.createElement('span')
+        date.className = 'cl-date'
+        date.textContent = entry.date || ''
+        heading.appendChild(ver)
+        heading.appendChild(date)
+
+        const ul = document.createElement('ul')
+        ul.className = 'cl-changes'
+        for (const change of entry.changes) {
+          const li = document.createElement('li')
+          li.textContent = change
+          ul.appendChild(li)
+        }
+
+        section.appendChild(heading)
+        section.appendChild(ul)
+        list.appendChild(section)
+      }
+    }
+  },
+}

@@ -8,7 +8,8 @@
   display: none !important;
 }
 
-:root {
+:root,
+:root[data-theme="dark"] {
   --bg: #0d0d0d;
   --sidebar-bg: #111;
   --surface: #1a1a1a;
@@ -23,6 +24,57 @@
   --warning: #fbbf24;
   --error: #f87171;
   --sidebar-width: 200px;
+  --overlay-bg: rgba(0, 0, 0, 0.5);
+  --scrollbar-thumb-hover: #3a3a3a;
+}
+
+:root[data-theme="light"] {
+  --bg: #f5f5f5;
+  --sidebar-bg: #fff;
+  --surface: #fff;
+  --surface-hover: #f0f0f0;
+  --border: #e0e0e0;
+  --text: #1a1a1a;
+  --text-muted: #666;
+  --text-subtle: #999;
+  --accent: #6366f1;
+  --accent-dim: #c7d2fe;
+  --overlay-bg: rgba(0, 0, 0, 0.3);
+  --scrollbar-thumb-hover: #bbb;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    --bg: #f5f5f5;
+    --sidebar-bg: #fff;
+    --surface: #fff;
+    --surface-hover: #f0f0f0;
+    --border: #e0e0e0;
+    --text: #1a1a1a;
+    --text-muted: #666;
+    --text-subtle: #999;
+    --accent: #6366f1;
+    --accent-dim: #c7d2fe;
+    --overlay-bg: rgba(0, 0, 0, 0.3);
+    --scrollbar-thumb-hover: #bbb;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --bg: #0d0d0d;
+    --sidebar-bg: #111;
+    --surface: #1a1a1a;
+    --surface-hover: #222;
+    --border: #2a2a2a;
+    --text: #e5e5e5;
+    --text-muted: #777;
+    --text-subtle: #444;
+    --accent: #818cf8;
+    --accent-dim: #3730a3;
+    --overlay-bg: rgba(0, 0, 0, 0.5);
+    --scrollbar-thumb-hover: #3a3a3a;
+  }
 }
 
 html, body {
@@ -110,7 +162,7 @@ html, body {
   font-weight: 600;
 }
 
-.notif-btn {
+.settings-btn {
   background: none;
   border: none;
   cursor: pointer;
@@ -124,12 +176,12 @@ html, body {
   z-index: 1;
 }
 
-.notif-btn:hover {
+.settings-btn:hover {
   color: var(--text);
   background: var(--surface-hover);
 }
 
-.notif-btn.granted {
+.settings-btn.notif-active {
   color: var(--accent);
 }
 
@@ -472,7 +524,7 @@ html, body {
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 
 /* ── Sidebar footer / Version button ──────── */
 
@@ -506,7 +558,7 @@ html, body {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--overlay-bg);
   align-items: flex-end;
   justify-content: center;
   z-index: 150;
@@ -516,7 +568,28 @@ html, body {
   display: flex;
 }
 
-@media (min-width: 480px) {
+.changelog-dialog.dialog-centered {
+  align-items: center;
+}
+
+@media (max-width: 767px) {
+  .changelog-dialog.dialog-centered {
+    padding: 16px;
+  }
+
+  .changelog-dialog.dialog-centered .changelog-panel {
+    border-radius: 12px;
+    max-height: min(85dvh, calc(100dvh - 32px));
+  }
+
+  .changelog-dialog.dialog-centered .create-channel-body {
+    overflow-y: auto;
+    min-height: 0;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (min-width: 768px) {
   .changelog-dialog {
     align-items: center;
   }
@@ -533,7 +606,11 @@ html, body {
   overflow: hidden;
 }
 
-@media (min-width: 480px) {
+.changelog-dialog.dialog-centered .changelog-panel {
+  border-radius: 12px;
+}
+
+@media (min-width: 768px) {
   .changelog-panel {
     border-radius: 12px;
     max-height: 80vh;
@@ -674,6 +751,83 @@ html, body {
   background: var(--border);
 }
 
+.webhook-reveal-btn {
+  align-self: flex-start;
+}
+
+.channel-settings-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.channel-delete-btn {
+  color: var(--error);
+  border-color: color-mix(in srgb, var(--error) 35%, var(--border));
+}
+
+.channel-delete-btn:hover:not(:disabled) {
+  color: #fff;
+  background: var(--error);
+  border-color: var(--error);
+}
+
+.confirm-dialog {
+  z-index: 200;
+}
+
+.confirm-dialog-panel {
+  text-align: center;
+  padding-top: 24px;
+}
+
+.confirm-dialog-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+  color: var(--error);
+}
+
+.confirm-dialog-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 4px;
+  padding: 0 20px;
+}
+
+.confirm-dialog-body {
+  padding-top: 8px;
+}
+
+.confirm-dialog-message {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.confirm-dialog-message strong {
+  color: var(--text);
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.confirm-delete-btn {
+  background: var(--error);
+}
+
+.confirm-delete-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
 .create-channel-hint {
   font-size: 11px;
   color: var(--text-subtle);
@@ -731,7 +885,6 @@ html, body {
 }
 
 .notif-secondary-btn {
-  margin-top: 8px;
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text);
@@ -752,6 +905,190 @@ html, body {
   font-weight: 600;
   color: var(--text-muted);
   margin: 0 0 6px;
+}
+
+/* ── Settings dialog ───────────────────────── */
+
+.settings-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.settings-panel {
+  max-width: 440px;
+  max-height: min(80vh, calc(100dvh - 40px));
+}
+
+.settings-panel .changelog-header {
+  flex-shrink: 0;
+}
+
+.settings-section {
+  flex-shrink: 0;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.settings-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-subtle);
+  margin-bottom: 10px;
+}
+
+.theme-segment {
+  display: flex;
+  gap: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.theme-segment-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.theme-segment-btn:hover {
+  color: var(--text);
+}
+
+.theme-segment-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.settings-btn-group .create-channel-submit,
+.settings-btn-group .settings-danger-btn {
+  margin-top: 0;
+  width: auto;
+  min-width: 14em;
+}
+
+.settings-version-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-version-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-subtle);
+  flex-shrink: 0;
+}
+
+.settings-version-text {
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.settings-changelog-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.settings-changelog-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.settings-changelog-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-bg);
+  z-index: 10;
+  padding: 20px 16px;
+}
+
+#settings-dialog {
+  position: fixed;
+}
+
+.settings-changelog-panel {
+  width: 100%;
+  max-width: 400px;
+  max-height: min(70vh, calc(100dvh - 40px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-logout-btn {
+  width: auto;
+  min-width: 14em;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--error);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 10px 12px;
+  border-radius: 6px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.settings-logout-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--error);
+}
+
+.settings-danger-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--error);
+}
+
+.settings-danger-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--error);
+}
+
+.settings-section--footer {
+  padding-top: 4px;
+  display: flex;
+  justify-content: center;
 }
 
 /* ── Webhooks page ─────────────────────────── */
@@ -1013,25 +1350,6 @@ html, body {
 .login-btn:hover {
   background: #f5f5f5;
   box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-}
-
-/* ── Logout button ─────────────────────────── */
-
-.logout-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted);
-  padding: 4px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  transition: color 0.15s, background 0.15s;
-}
-
-.logout-btn:hover {
-  color: var(--error);
-  background: var(--surface-hover);
 }
 
 /* ── Mobile sidebar ─────────────────────────── */

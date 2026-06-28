@@ -13,6 +13,8 @@ const webhookDetail = document.getElementById('webhook-detail')
 const webhookEmpty = document.getElementById('webhook-empty')
 const webhookUrlInput = document.getElementById('webhook-url-input')
 const webhookCopyBtn = document.getElementById('webhook-copy-btn')
+const webhookRevealBtn = document.getElementById('webhook-reveal-btn')
+const webhookUrlSection = document.getElementById('webhook-url-section')
 const webhookExampleCode = document.getElementById('webhook-example-code')
 const apiKeyForm = document.getElementById('api-key-form')
 const apiKeyName = document.getElementById('api-key-name')
@@ -79,6 +81,15 @@ function updatePageUrl(channelName) {
   history.replaceState(null, '', url)
 }
 
+function hideWebhookUrl() {
+  if (webhookUrlSection) webhookUrlSection.hidden = true
+  if (webhookRevealBtn) {
+    webhookRevealBtn.hidden = false
+    webhookRevealBtn.textContent = 'URL を表示'
+  }
+  if (webhookCopyBtn) webhookCopyBtn.textContent = 'コピー'
+}
+
 function renderChannelList(selectName = null) {
   channelList.innerHTML = ''
 
@@ -121,6 +132,7 @@ function selectChannel(name) {
   document.title = `Webhook — #${name} — Signaly`
 
   webhookUrlInput.value = channel.webhook_url
+  hideWebhookUrl()
   webhookExampleCode.textContent = `curl -X POST "${channel.webhook_url}" \\
   -H "Content-Type: application/json" \\
   -d '{"content":"デプロイ完了","embeds":[{"title":"v1.2.3","description":"本番に反映しました","color":5763719,"fields":[{"name":"Branch","value":"main","inline":true}]}]}'`
@@ -141,6 +153,11 @@ webhookCopyBtn?.addEventListener('click', async () => {
     webhookUrlInput.select()
     document.execCommand('copy')
   }
+})
+
+webhookRevealBtn?.addEventListener('click', () => {
+  webhookUrlSection.hidden = false
+  webhookRevealBtn.hidden = true
 })
 
 async function loadApiKeys() {
@@ -220,82 +237,7 @@ apiKeyCreatedCopy?.addEventListener('click', async () => {
   }
 })
 
-function addLogoutButton() {
-  const header = document.querySelector('.sidebar-header')
-  if (!header || header.querySelector('.logout-btn')) return
-
-  const btn = document.createElement('button')
-  btn.className = 'logout-btn'
-  btn.title = 'ログアウト'
-  btn.setAttribute('aria-label', 'ログアウト')
-  btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-    <polyline points="16 17 21 12 16 7"/>
-    <line x1="21" y1="12" x2="9" y2="12"/>
-  </svg>`
-  btn.addEventListener('click', async () => {
-    await fetch(apiUrl('auth/logout'), { method: 'POST' })
-    location.reload()
-  })
-  header.appendChild(btn)
-}
-
-// ── Version / Changelog ──────────────────────────────────────────────────────
-
-const versionBtn = document.getElementById('version-btn')
-const changelogDialog = document.getElementById('changelog-dialog')
-const changelogClose = document.getElementById('changelog-close')
-
-if (typeof APP_VERSION !== 'undefined' && versionBtn) {
-  versionBtn.textContent = `v${APP_VERSION}`
-}
-
-function renderChangelog() {
-  const list = document.getElementById('changelog-list')
-  if (!list || typeof APP_CHANGELOG === 'undefined') return
-  list.innerHTML = ''
-  for (const entry of APP_CHANGELOG) {
-    const section = document.createElement('div')
-    section.className = 'cl-entry'
-
-    const heading = document.createElement('div')
-    heading.className = 'cl-heading'
-    const ver = document.createElement('span')
-    ver.className = 'cl-version'
-    ver.textContent = `v${entry.version}`
-    const date = document.createElement('span')
-    date.className = 'cl-date'
-    date.textContent = entry.date || ''
-    heading.appendChild(ver)
-    heading.appendChild(date)
-
-    const ul = document.createElement('ul')
-    ul.className = 'cl-changes'
-    for (const change of entry.changes) {
-      const li = document.createElement('li')
-      li.textContent = change
-      ul.appendChild(li)
-    }
-
-    section.appendChild(heading)
-    section.appendChild(ul)
-    list.appendChild(section)
-  }
-}
-
-renderChangelog()
-
-versionBtn?.addEventListener('click', () => {
-  changelogDialog?.classList.add('open')
-})
-
-changelogClose?.addEventListener('click', () => {
-  changelogDialog?.classList.remove('open')
-})
-
-changelogDialog?.addEventListener('click', (e) => {
-  if (e.target === changelogDialog) changelogDialog.classList.remove('open')
-})
+SignalySettings.init({ apiUrl, closeSidebar })
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
@@ -315,7 +257,7 @@ async function init() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
     channels = data.channels
-    addLogoutButton()
+    SignalySettings.showAuthenticated()
     renderChannelList()
     loadApiKeys()
   } catch (err) {

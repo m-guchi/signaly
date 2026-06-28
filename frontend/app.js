@@ -24,7 +24,6 @@ const feed = document.getElementById('feed')
 const emptyState = document.getElementById('empty-state')
 const channelTitle = document.getElementById('channel-title')
 const statusEl = document.getElementById('status')
-const notifBtn = document.getElementById('notif-btn')
 const sidebar = document.getElementById('sidebar')
 const sidebarToggle = document.getElementById('sidebar-toggle')
 const sidebarBackdrop = document.getElementById('sidebar-backdrop')
@@ -218,7 +217,7 @@ function renderChannels(channels, selectName = null) {
     const settingsBtn = document.createElement('button')
     settingsBtn.type = 'button'
     settingsBtn.className = 'channel-settings-btn'
-    settingsBtn.title = 'Webhook URL'
+    settingsBtn.title = 'チャンネル設定'
     settingsBtn.setAttribute('aria-label', `${channel.name} の設定`)
     settingsBtn.innerHTML = CHANNEL_SETTINGS_ICON
     settingsBtn.addEventListener('click', (e) => {
@@ -460,6 +459,28 @@ async function syncPushSubscription() {
   await subscribePush()
 }
 
+async function unsubscribePush() {
+  if (!pushSupported()) return false
+  try {
+    const reg = await navigator.serviceWorker.ready
+    const sub = await reg.pushManager.getSubscription()
+    if (sub) {
+      const json = sub.toJSON()
+      await fetch(apiUrl('api/push/unsubscribe'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+      })
+      await sub.unsubscribe()
+    }
+    pushSubscribed = false
+    return true
+  } catch {
+    pushSubscribed = false
+    return false
+  }
+}
+
 function showDesktopNotification(entry) {
   if (pushSubscribed) return
   if (!('Notification' in window) || Notification.permission !== 'granted') return
@@ -478,201 +499,17 @@ function showDesktopNotification(entry) {
   }
 }
 
-function updateNotifBtnState() {
-  if (!notifBtn) return
-  if (!('Notification' in window)) {
-    notifBtn.hidden = true
-    return
-  }
-  notifBtn.hidden = false
-  notifBtn.title = '通知設定'
-  if (Notification.permission === 'granted') {
-    notifBtn.classList.add('granted')
-  } else {
-    notifBtn.classList.remove('granted')
-  }
-}
-
-function detectMobilePlatform() {
-  const ua = navigator.userAgent
-  if (/iPhone|iPad|iPod/.test(ua)) return 'ios'
-  if (/Android/.test(ua)) return 'android'
-  return 'desktop'
-}
-
-function osSettingsHintText() {
-  const platform = detectMobilePlatform()
-  if (platform === 'ios') {
-    return '設定 → 通知 → Signaly で「通知を許可」をオンにしてください。ホーム画面に追加した PWA から開いている必要があります。'
-  }
-  if (platform === 'android') {
-    return '設定 → アプリ → Signaly → 通知 で通知をオンにしてください。'
-  }
-  return 'ブラウザのアドレスバー左のアイコン → サイトの設定 → 通知 で許可してください。'
-}
-
-function renderNotifSettings() {
-  const permEl = document.getElementById('notif-status-permission')
-  const pushEl = document.getElementById('notif-status-push')
-  const messageEl = document.getElementById('notif-settings-message')
-  const enableBtn = document.getElementById('notif-enable-btn')
-  const reregisterBtn = document.getElementById('notif-reregister-btn')
-  const osHint = document.getElementById('notif-os-hint')
-  const osHintText = document.getElementById('notif-os-hint-text')
-  if (!permEl || !pushEl || !messageEl || !enableBtn || !reregisterBtn || !osHint || !osHintText) return
-
-  const permission = ('Notification' in window) ? Notification.permission : 'denied'
-  const canPush = pushSupported()
-
-  permEl.textContent = permission === 'granted' ? '許可済み'
-    : permission === 'denied' ? 'ブロック中' : '未設定'
-  permEl.className = permission === 'granted' ? 'notif-status--ok'
-    : permission === 'denied' ? 'notif-status--bad' : 'notif-status--warn'
-
-  if (!canPush) {
-    pushEl.textContent = '非対応'
-    pushEl.className = 'notif-status--bad'
-  } else if (pushSubscribed) {
-    pushEl.textContent = '有効（バックグラウンド対応）'
-    pushEl.className = 'notif-status--ok'
-  } else if (permission === 'granted') {
-    pushEl.textContent = '未登録'
-    pushEl.className = 'notif-status--warn'
-  } else {
-    pushEl.textContent = '—'
-    pushEl.className = ''
-  }
-
-  enableBtn.hidden = permission !== 'default'
-  reregisterBtn.hidden = !(permission === 'granted' && canPush)
-  osHint.hidden = permission !== 'denied'
-  osHintText.textContent = osSettingsHintText()
-
-  if (permission === 'granted' && pushSubscribed) {
-    messageEl.textContent = 'アプリを閉じていても通知が届きます。届かない場合は Push を再登録してください。'
-  } else if (permission === 'granted') {
-    messageEl.textContent = '端末の通知は許可されています。Push を登録するとバックグラウンドでも届きます。'
-  } else if (permission === 'denied') {
-    messageEl.textContent = '通知がブロックされています。下の手順で端末の設定から許可してください。'
-  } else {
-    messageEl.textContent = '「通知を許可する」を押すと、端末の確認画面が開きます。'
-  }
-}
-
-function openNotifSettingsDialog() {
-  if (!notifSettingsDialog) return
-  closeSidebar()
-  renderNotifSettings()
-  notifSettingsDialog.classList.add('open')
-}
-
-function closeNotifSettingsDialog() {
-  notifSettingsDialog?.classList.remove('open')
-}
-
-const notifSettingsDialog = document.getElementById('notif-settings-dialog')
-const notifSettingsClose = document.getElementById('notif-settings-close')
-const notifEnableBtn = document.getElementById('notif-enable-btn')
-const notifReregisterBtn = document.getElementById('notif-reregister-btn')
-
-function setupNotifSettingsUi() {
-  if (!notifBtn || !notifSettingsDialog) return
-
-  notifBtn.addEventListener('click', (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    openNotifSettingsDialog()
-  })
-
-  notifSettingsClose?.addEventListener('click', closeNotifSettingsDialog)
-
-  notifSettingsDialog.addEventListener('click', (e) => {
-    if (e.target === notifSettingsDialog) closeNotifSettingsDialog()
-  })
-
-  notifEnableBtn?.addEventListener('click', async () => {
-    notifEnableBtn.disabled = true
-    try {
-      await Notification.requestPermission()
-      if (Notification.permission === 'granted') {
-        await subscribePush(true)
-      }
-      updateNotifBtnState()
-      renderNotifSettings()
-    } finally {
-      notifEnableBtn.disabled = false
-    }
-  })
-
-  notifReregisterBtn?.addEventListener('click', async () => {
-    notifReregisterBtn.disabled = true
-    try {
-      await subscribePush(true)
-      updateNotifBtnState()
-      renderNotifSettings()
-    } finally {
-      notifReregisterBtn.disabled = false
-    }
-  })
-}
-
-setupNotifSettingsUi()
-
-// ── Version / Changelog ──────────────────────────────────────────────────────
-
-const versionBtn = document.getElementById('version-btn')
-const changelogDialog = document.getElementById('changelog-dialog')
-const changelogClose = document.getElementById('changelog-close')
-
-if (typeof APP_VERSION !== 'undefined' && versionBtn) {
-  versionBtn.textContent = `v${APP_VERSION}`
-}
-
-function renderChangelog() {
-  const list = document.getElementById('changelog-list')
-  if (!list || typeof APP_CHANGELOG === 'undefined') return
-  list.innerHTML = ''
-  for (const entry of APP_CHANGELOG) {
-    const section = document.createElement('div')
-    section.className = 'cl-entry'
-
-    const heading = document.createElement('div')
-    heading.className = 'cl-heading'
-    const ver = document.createElement('span')
-    ver.className = 'cl-version'
-    ver.textContent = `v${entry.version}`
-    const date = document.createElement('span')
-    date.className = 'cl-date'
-    date.textContent = entry.date || ''
-    heading.appendChild(ver)
-    heading.appendChild(date)
-
-    const ul = document.createElement('ul')
-    ul.className = 'cl-changes'
-    for (const change of entry.changes) {
-      const li = document.createElement('li')
-      li.textContent = change
-      ul.appendChild(li)
-    }
-
-    section.appendChild(heading)
-    section.appendChild(ul)
-    list.appendChild(section)
-  }
-}
-
-renderChangelog()
-
-versionBtn?.addEventListener('click', () => {
-  changelogDialog?.classList.add('open')
-})
-
-changelogClose?.addEventListener('click', () => {
-  changelogDialog?.classList.remove('open')
-})
-
-changelogDialog?.addEventListener('click', (e) => {
-  if (e.target === changelogDialog) changelogDialog.classList.remove('open')
+SignalySettings.init({
+  apiUrl,
+  closeSidebar,
+  notifications: {
+    isSupported: () => 'Notification' in window,
+    pushSupported,
+    getPushSubscribed: () => pushSubscribed,
+    subscribePush,
+    unsubscribePush,
+    onStateChange: () => SignalySettings.updateSettingsBtnState(),
+  },
 })
 
 // ── Create channel ────────────────────────────────────────────────────────────
@@ -689,6 +526,17 @@ const createChannelSuccessName = document.getElementById('create-channel-success
 const createChannelWebhook = document.getElementById('create-channel-webhook')
 const createChannelCopy = document.getElementById('create-channel-copy')
 const createChannelDone = document.getElementById('create-channel-done')
+const createChannelRevealWebhook = document.getElementById('create-channel-reveal-webhook')
+const createChannelWebhookSection = document.getElementById('create-channel-webhook-section')
+
+function hideWebhookSection(revealBtn, section, copyBtn = null) {
+  if (section) section.hidden = true
+  if (revealBtn) {
+    revealBtn.hidden = false
+    revealBtn.textContent = 'URL を表示'
+  }
+  if (copyBtn) copyBtn.textContent = 'コピー'
+}
 
 function resetCreateChannelDialog() {
   createChannelForm.hidden = false
@@ -697,16 +545,16 @@ function resetCreateChannelDialog() {
   createChannelName.value = ''
   createChannelError.hidden = true
   createChannelError.textContent = ''
+  hideWebhookSection(createChannelRevealWebhook, createChannelWebhookSection, createChannelCopy)
 }
 
 function openCreateChannelDialog() {
   resetCreateChannelDialog()
-  createChannelDialog?.classList.add('open')
-  createChannelName?.focus()
+  SignalyDialog.open(createChannelDialog, { focusEl: createChannelName })
 }
 
 function closeCreateChannelDialog() {
-  createChannelDialog?.classList.remove('open')
+  SignalyDialog.close(createChannelDialog)
 }
 
 addChannelBtn?.addEventListener('click', openCreateChannelDialog)
@@ -753,6 +601,7 @@ createChannelForm?.addEventListener('submit', async (e) => {
     createChannelTitle.textContent = 'チャンネルを作成しました'
     createChannelSuccessName.textContent = data.name
     createChannelWebhook.value = data.webhook_url
+    hideWebhookSection(createChannelRevealWebhook, createChannelWebhookSection, createChannelCopy)
 
     const listRes = await fetch(apiUrl('api/channels'))
     if (listRes.ok) {
@@ -778,41 +627,119 @@ createChannelCopy?.addEventListener('click', async () => {
   }
 })
 
-// ── Channel settings (Webhook URL) ────────────────────────────────────────────
+createChannelRevealWebhook?.addEventListener('click', () => {
+  createChannelWebhookSection.hidden = false
+  createChannelRevealWebhook.hidden = true
+})
+
+// ── Channel settings ──────────────────────────────────────────────────────────
 
 const channelSettingsDialog = document.getElementById('channel-settings-dialog')
 const channelSettingsClose = document.getElementById('channel-settings-close')
-const channelSettingsName = document.getElementById('channel-settings-name')
+const channelSettingsRename = document.getElementById('channel-settings-rename')
+const channelSettingsRenameBtn = document.getElementById('channel-settings-rename-btn')
+const channelSettingsError = document.getElementById('channel-settings-error')
 const channelSettingsWebhook = document.getElementById('channel-settings-webhook')
 const channelSettingsCopy = document.getElementById('channel-settings-copy')
+const channelSettingsRevealWebhook = document.getElementById('channel-settings-reveal-webhook')
+const channelSettingsWebhookSection = document.getElementById('channel-settings-webhook-section')
+const channelSettingsDelete = document.getElementById('channel-settings-delete')
+const channelDeleteDialog = document.getElementById('channel-delete-dialog')
+const channelDeleteName = document.getElementById('channel-delete-name')
+const channelDeleteError = document.getElementById('channel-delete-error')
+const channelDeleteCancel = document.getElementById('channel-delete-cancel')
+const channelDeleteConfirm = document.getElementById('channel-delete-confirm')
+
+let channelSettingsId = null
+let channelSettingsOriginalName = null
+
+function parseApiError(data, fallback) {
+  let message = data?.detail
+  if (Array.isArray(message)) {
+    message = message.map(e => e.msg).join(', ')
+  } else if (typeof message !== 'string') {
+    message = fallback
+  }
+  return message
+}
+
+async function refreshChannels(selectName = null) {
+  const res = await fetch(apiUrl('api/channels'))
+  if (!res.ok) return false
+  const { channels } = await res.json()
+  renderChannels(channels, selectName)
+  return true
+}
+
+function resetChannelSettingsDialog() {
+  channelSettingsId = null
+  channelSettingsOriginalName = null
+  channelSettingsError.hidden = true
+  channelSettingsError.textContent = ''
+  hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy)
+  channelSettingsRenameBtn.disabled = false
+  channelSettingsDelete.disabled = false
+}
 
 function openChannelSettings(channelName) {
   const channel = channelsByName[channelName]
-  if (!channel?.webhook_url) return
+  if (!channel) return
 
-  channelSettingsName.textContent = channelName
-  channelSettingsWebhook.value = channel.webhook_url
-  channelSettingsDialog?.classList.add('open')
+  channelSettingsId = channel.id
+  channelSettingsOriginalName = channelName
+  channelSettingsRename.value = channelName
+  channelSettingsWebhook.value = channel.webhook_url || ''
+  channelSettingsError.hidden = true
+  hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy)
   closeSidebar()
+  SignalyDialog.open(channelSettingsDialog, { focusEl: channelSettingsRename })
+  channelSettingsRename?.select()
 }
 
 function closeChannelSettingsDialog() {
-  channelSettingsDialog?.classList.remove('open')
+  SignalyDialog.close(channelSettingsDialog)
+  resetChannelSettingsDialog()
 }
 
 channelSettingsClose?.addEventListener('click', closeChannelSettingsDialog)
 
 channelSettingsDialog?.addEventListener('click', (e) => {
-  if (e.target === channelSettingsDialog) closeChannelSettingsDialog()
+  if (e.target === channelSettingsDialog && !channelDeleteDialog?.classList.contains('open')) {
+    closeChannelSettingsDialog()
+  }
 })
 
+function openChannelDeleteDialog() {
+  if (!channelSettingsOriginalName) return
+  channelDeleteName.textContent = channelSettingsOriginalName
+  channelDeleteError.hidden = true
+  channelDeleteError.textContent = ''
+  channelDeleteConfirm.disabled = false
+  channelDeleteCancel.disabled = false
+  SignalyDialog.open(channelDeleteDialog, { focusEl: channelDeleteCancel })
+}
+
+function closeChannelDeleteDialog() {
+  SignalyDialog.close(channelDeleteDialog)
+  channelDeleteError.hidden = true
+  channelDeleteError.textContent = ''
+  channelDeleteConfirm.disabled = false
+  channelDeleteCancel.disabled = false
+}
+
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && channelDeleteDialog?.classList.contains('open')) {
+    closeChannelDeleteDialog()
+    return
+  }
   if (e.key === 'Escape' && channelSettingsDialog?.classList.contains('open')) {
     closeChannelSettingsDialog()
   }
-  if (e.key === 'Escape' && notifSettingsDialog?.classList.contains('open')) {
-    closeNotifSettingsDialog()
-  }
+})
+
+channelSettingsRevealWebhook?.addEventListener('click', () => {
+  channelSettingsWebhookSection.hidden = false
+  channelSettingsRevealWebhook.hidden = true
 })
 
 channelSettingsCopy?.addEventListener('click', async () => {
@@ -823,6 +750,101 @@ channelSettingsCopy?.addEventListener('click', async () => {
   } catch {
     channelSettingsWebhook.select()
     document.execCommand('copy')
+  }
+})
+
+channelSettingsRenameBtn?.addEventListener('click', async () => {
+  const newName = channelSettingsRename.value.trim()
+  if (!newName || !channelSettingsId) return
+  if (newName === channelSettingsOriginalName) return
+
+  channelSettingsError.hidden = true
+  channelSettingsRenameBtn.disabled = true
+
+  try {
+    const res = await fetch(apiUrl(`api/channels/${channelSettingsId}`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      channelSettingsError.textContent = parseApiError(data, '変更に失敗しました')
+      channelSettingsError.hidden = false
+      return
+    }
+
+    const oldName = channelSettingsOriginalName
+    if (unread[oldName]) {
+      unread[newName] = (unread[newName] || 0) + unread[oldName]
+      delete unread[oldName]
+    }
+
+    channelSettingsOriginalName = newName
+    channelSettingsId = data.id
+    channelsByName[newName] = data
+
+    const wasActive = activeChannel === oldName
+    await refreshChannels(wasActive ? newName : activeChannel)
+    closeChannelSettingsDialog()
+  } catch {
+    channelSettingsError.textContent = 'ネットワークエラーが発生しました'
+    channelSettingsError.hidden = false
+  } finally {
+    channelSettingsRenameBtn.disabled = false
+  }
+})
+
+channelSettingsDelete?.addEventListener('click', () => {
+  if (!channelSettingsId || !channelSettingsOriginalName) return
+  openChannelDeleteDialog()
+})
+
+channelDeleteCancel?.addEventListener('click', closeChannelDeleteDialog)
+
+channelDeleteDialog?.addEventListener('click', (e) => {
+  if (e.target === channelDeleteDialog) closeChannelDeleteDialog()
+})
+
+channelDeleteConfirm?.addEventListener('click', async () => {
+  if (!channelSettingsId || !channelSettingsOriginalName) return
+
+  channelDeleteError.hidden = true
+  channelDeleteConfirm.disabled = true
+  channelDeleteCancel.disabled = true
+  channelSettingsDelete.disabled = true
+  channelSettingsRenameBtn.disabled = true
+
+  try {
+    const res = await fetch(apiUrl(`api/channels/${channelSettingsId}`), {
+      method: 'DELETE',
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      channelDeleteError.textContent = parseApiError(data, '削除に失敗しました')
+      channelDeleteError.hidden = false
+      return
+    }
+
+    const deletedName = channelSettingsOriginalName
+    delete unread[deletedName]
+    closeChannelDeleteDialog()
+    closeChannelSettingsDialog()
+
+    if (activeChannel === deletedName && eventSource) {
+      eventSource.close()
+      eventSource = null
+    }
+
+    await refreshChannels(activeChannel === deletedName ? null : activeChannel)
+  } catch {
+    channelDeleteError.textContent = 'ネットワークエラーが発生しました'
+    channelDeleteError.hidden = false
+  } finally {
+    channelDeleteConfirm.disabled = false
+    channelDeleteCancel.disabled = false
+    channelSettingsDelete.disabled = false
+    channelSettingsRenameBtn.disabled = false
   }
 })
 
@@ -840,29 +862,9 @@ async function checkAuth() {
   return false
 }
 
-function addLogoutButton() {
-  const btn = document.createElement('button')
-  btn.className = 'logout-btn'
-  btn.title = 'ログアウト'
-  btn.setAttribute('aria-label', 'ログアウト')
-  btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-    <polyline points="16 17 21 12 16 7"/>
-    <line x1="21" y1="12" x2="9" y2="12"/>
-  </svg>`
-  btn.addEventListener('click', async () => {
-    await fetch(apiUrl('auth/logout'), { method: 'POST' })
-    location.reload()
-  })
-  const actions = document.getElementById('sidebar-header-actions')
-    ?? document.querySelector('.sidebar-header')
-  actions?.appendChild(btn)
-}
-
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
-  updateNotifBtnState()
 
   const loginLink = document.getElementById('login-link')
   if (loginLink) loginLink.href = apiUrl('auth/login')
@@ -887,7 +889,7 @@ async function init() {
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const { channels } = await res.json()
-    addLogoutButton()
+    SignalySettings.showAuthenticated()
     addChannelBtn.hidden = false
     renderChannels(channels, urlChannel)
     try {
@@ -895,7 +897,7 @@ async function init() {
     } catch {
       pushSubscribed = false
     }
-    updateNotifBtnState()
+    SignalySettings.updateSettingsBtnState()
   } catch (err) {
     clearTimeout(timeout)
     const msg = err.name === 'AbortError' ? 'タイムアウト' : err.message

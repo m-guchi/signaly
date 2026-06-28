@@ -7,8 +7,9 @@
   <link rel="manifest" href="manifest.json?v=0.2.0">
   <link rel="icon" href="icon.svg?v=0.2.0" type="image/svg+xml">
   <link rel="apple-touch-icon" href="apple-touch-icon.png?v=0.2.0">
-  <link rel="stylesheet" href="style.css?v=0.2.0">
+  <link rel="stylesheet" href="style.css?v=0.2.4">
   <meta name="theme-color" content="#000000">
+  <script>(function(){var t=localStorage.getItem('signaly-theme')||'system';document.documentElement.setAttribute('data-theme',t);})();</script>
 </head>
 <body>
   <div id="app">
@@ -21,6 +22,14 @@
           </svg>
           Signaly
         </a>
+        <div class="sidebar-header-actions" id="sidebar-header-actions">
+          <button id="settings-btn" type="button" class="settings-btn" title="設定" aria-label="設定" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
       </div>
       <nav class="sidebar-nav" aria-label="ナビゲーション">
         <a href="./" class="sidebar-nav-item">通知</a>
@@ -32,9 +41,6 @@
       <nav id="channel-list" aria-label="チャンネル一覧">
         <div class="loading-text">読み込み中…</div>
       </nav>
-      <footer class="sidebar-footer">
-        <button id="version-btn" class="version-btn" title="更新履歴を見る">v…</button>
-      </footer>
     </aside>
 
     <main id="main">
@@ -53,10 +59,13 @@
           <p class="webhooks-intro">
             このチャンネル専用の Webhook URL です。外部サービスや CI から POST すると通知が届きます。
           </p>
-          <label class="create-channel-label" for="webhook-url-input">Webhook URL</label>
-          <div class="create-channel-webhook-row">
-            <input id="webhook-url-input" class="create-channel-input create-channel-webhook-input" type="text" readonly>
-            <button id="webhook-copy-btn" type="button" class="create-channel-copy" title="コピー">コピー</button>
+          <label class="create-channel-label">Webhook URL</label>
+          <button id="webhook-reveal-btn" type="button" class="create-channel-copy webhook-reveal-btn">URL を表示</button>
+          <div id="webhook-url-section" hidden>
+            <div class="create-channel-webhook-row">
+              <input id="webhook-url-input" class="create-channel-input create-channel-webhook-input" type="text" readonly>
+              <button id="webhook-copy-btn" type="button" class="create-channel-copy" title="コピー">コピー</button>
+            </div>
           </div>
           <section class="webhooks-example" aria-labelledby="webhooks-example-title">
             <h2 id="webhooks-example-title" class="webhooks-example-title">リクエスト例</h2>
@@ -89,6 +98,46 @@
     </main>
   </div>
 
+  <div id="settings-dialog" class="changelog-dialog dialog-centered" role="dialog" aria-modal="true" aria-label="設定">
+    <div class="changelog-panel create-channel-panel settings-panel">
+      <div class="changelog-header">
+        <h2 class="changelog-title">設定</h2>
+        <button id="settings-close" class="changelog-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="create-channel-body settings-body">
+        <section class="settings-section">
+          <h3 class="settings-section-title">表示テーマ</h3>
+          <div class="theme-segment" role="radiogroup" aria-label="表示テーマ">
+            <button type="button" class="theme-segment-btn" data-theme="light" role="radio" aria-checked="false">ライト</button>
+            <button type="button" class="theme-segment-btn" data-theme="dark" role="radio" aria-checked="false">ダーク</button>
+            <button type="button" class="theme-segment-btn" data-theme="system" role="radio" aria-checked="false">システム</button>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <div class="settings-version-row">
+            <span class="settings-version-label">バージョン</span>
+            <span id="settings-version-text" class="settings-version-text">v…</span>
+            <button type="button" id="settings-changelog-btn" class="settings-changelog-btn">変更履歴</button>
+          </div>
+        </section>
+
+        <section class="settings-section settings-section--footer">
+          <button type="button" id="settings-logout-btn" class="settings-logout-btn">ログアウト</button>
+        </section>
+      </div>
+    </div>
+    <div id="settings-changelog-overlay" class="settings-changelog-overlay" hidden>
+      <div class="settings-changelog-panel changelog-panel">
+        <div class="changelog-header">
+          <h2 class="changelog-title">更新履歴</h2>
+          <button id="settings-changelog-close" type="button" class="changelog-close" aria-label="閉じる">✕</button>
+        </div>
+        <div id="settings-changelog-list" class="changelog-list"></div>
+      </div>
+    </div>
+  </div>
+
   <div id="changelog-dialog" class="changelog-dialog" role="dialog" aria-modal="true" aria-label="更新履歴">
     <div class="changelog-panel">
       <div class="changelog-header">
@@ -119,6 +168,8 @@
   </div>
 
   <script src="changelog.js"></script>
+  <script src="dialog.js"></script>
+  <script src="settings.js?v=0.2.4"></script>
   <script src="webhooks.js"></script>
 </body>
 </html>
