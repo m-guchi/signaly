@@ -28,7 +28,7 @@ from notification_prefs import (
     set_channel_notification_setting,
     set_group_notification_setting,
 )
-from push import push_configured, send_push_notifications, validate_push_config
+from push import push_configured, send_push_notifications, send_test_push_to_user, validate_push_config
 from webhook import parse_webhook_payload
 
 BASE_DIR = Path(__file__).parent
@@ -993,6 +993,18 @@ async def push_subscribe(body: PushSubscribeBody, email: str = Depends(auth.requ
         body.keys["auth"],
     )
     return {"ok": True}
+
+
+@app.post("/api/push/test")
+async def push_test(email: str = Depends(auth.require_auth)):
+    if not push_configured():
+        raise HTTPException(status_code=503, detail="Web Push が設定されていません")
+    result = await asyncio.to_thread(send_test_push_to_user, email)
+    if result.get("error") == "no_subscription":
+        raise HTTPException(status_code=404, detail="Push 登録がありません")
+    if result.get("sent", 0) == 0:
+        raise HTTPException(status_code=502, detail="テスト通知の送信に失敗しました")
+    return {"ok": True, **result}
 
 
 @app.post("/api/push/unsubscribe")

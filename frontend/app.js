@@ -304,6 +304,23 @@ function totalUnread() {
 function updateDocumentTitle() {
   const total = totalUnread()
   document.title = total > 0 ? `(${total > 99 ? '99+' : total}) Signaly` : 'Signaly'
+  void updateAppBadge(total)
+}
+
+async function updateAppBadge(total = totalUnread()) {
+  try {
+    if ('setAppBadge' in navigator) {
+      if (total > 0) {
+        await navigator.setAppBadge(total)
+      } else if ('clearAppBadge' in navigator) {
+        await navigator.clearAppBadge()
+      }
+    }
+  } catch {
+    // 通知未許可・非対応環境など
+  }
+  const sw = navigator.serviceWorker?.controller
+  if (sw) sw.postMessage({ type: 'sync-app-badge', count: total })
 }
 
 // ── Notification card ────────────────────────────────────────────────────────
@@ -837,6 +854,10 @@ function updateAllBadges() {
 async function selectChannel(name) {
   if (activeChannel === name) return
 
+  // SSE 接続前に保存（接続後の markChannelRead で上書きされないようにする）
+  const sinceLastRead = lastReadAt[name]
+  const pendingUnread = unread[name] || 0
+
   activeChannel = name
   saveLastChannel(name)
   updatePageUrl(name)
@@ -857,12 +878,12 @@ async function selectChannel(name) {
 
   // SSE を先に張り、履歴読み込み中の通知取りこぼしを防ぐ
   connectSSE(name)
-  await loadHistory(name)
+  await loadHistory(name, sinceLastRead, pendingUnread)
 
   closeSidebar()
 }
 
-async function loadHistory(channelName) {
+async function loadHistory(channelName, sinceLastRead, pendingUnread = 0) {
   showFeedLoading()
   try {
     const res = await fetch(apiUrl(`api/history/${channelName}`))
@@ -870,7 +891,7 @@ async function loadHistory(channelName) {
     if (!res.ok) {
       showFeedError(
         `読み込みに失敗しました (HTTP ${res.status})`,
-        () => loadHistory(channelName),
+        () => loadHistory(channelName, sinceLastRead, pendingUnread),
       )
       return
     }
@@ -884,6 +905,7 @@ async function loadHistory(channelName) {
     }
     let newestTs = 0
     let prevDateKey = null
+    let unreadToMark = sinceLastRead === undefined ? pendingUnread : 0
     // API は新しい順。appendChild で先頭が最新になる
     for (const entry of logs) {
       if (seenIds.has(entry.id)) continue
@@ -892,8 +914,13 @@ async function loadHistory(channelName) {
       if (prevDateKey !== null && prevDateKey !== dateKey) {
         feed.appendChild(createDateDivider(dateKey))
       }
-      feed.appendChild(createCard(entry))
       const ts = parseTimestamp(entry.timestamp)
+      const isNew = sinceLastRead !== undefined
+        ? ts > sinceLastRead
+        : unreadToMark > 0 && unreadToMark--
+      const card = createCard(entry, { isNew })
+      feed.appendChild(card)
+      if (isNew) scheduleNewCardFade(card)
       if (ts > newestTs) newestTs = ts
       prevDateKey = dateKey
     }
@@ -906,7 +933,7 @@ async function loadHistory(channelName) {
     const msg = err.name === 'AbortError' ? 'タイムアウト' : 'ネットワークエラー'
     showFeedError(
       `読み込みに失敗しました (${msg})`,
-      () => loadHistory(channelName),
+      () => loadHistory(channelName, sinceLastRead, pendingUnread),
     )
   }
 }
@@ -1348,6 +1375,43 @@ function showDesktopNotification(entry) {
   }
 }
 
+async function sendTestNotification() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') {
+    return { ok: false, message: '端末の通知が許可されていません。' }
+  }
+
+  if (pushSupported() && pushSubscribed) {
+    try {
+      const res = await fetch(apiUrl('api/push/test'), { method: 'POST' })
+      if (res.ok) {
+        return { ok: true, mode: 'push' }
+      }
+      const err = await res.json().catch(() => ({}))
+      const detail = err.detail || 'テスト通知の送信に失敗しました'
+      if (res.status === 404) {
+        return { ok: false, message: `${detail}「有効にする」または「再登録する」を試してください。` }
+      }
+      return { ok: false, message: detail }
+    } catch {
+      return { ok: false, message: 'ネットワークエラー' }
+    }
+  }
+
+  try {
+    const icon = typeof APP_VERSION !== 'undefined'
+      ? `icon-192.png?v=${APP_VERSION}`
+      : 'icon-192.png'
+    new Notification('Signaly テスト通知', {
+      body: '通知の受信確認用です。このまま届いていれば OK です。',
+      icon,
+      tag: 'signaly-test',
+    })
+    return { ok: true, mode: 'local' }
+  } catch {
+    return { ok: false, message: '通知の表示に失敗しました' }
+  }
+}
+
 SignalySettings.init({
   apiUrl,
   closeSidebar,
@@ -1357,6 +1421,7 @@ SignalySettings.init({
     getPushSubscribed: () => pushSubscribed,
     subscribePush,
     unsubscribePush,
+    sendTest: sendTestNotification,
     onStateChange: () => SignalySettings.updateSettingsBtnState(),
   },
 })
@@ -2054,6 +2119,10 @@ async function registerServiceWorker() {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) void updateAppBadge()
+  })
 
   const loginLink = document.getElementById('login-link')
   if (loginLink) loginLink.href = apiUrl('auth/login')

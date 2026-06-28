@@ -1,5 +1,36 @@
 'use strict'
 
+const BADGE_CACHE = 'signaly-meta-v1'
+
+async function setAppBadgeCount(count) {
+  if (!('setAppBadge' in self.registration)) return
+  const cache = await caches.open(BADGE_CACHE)
+  const n = Number(count) || 0
+  if (n > 0) {
+    await cache.put('app-badge-count', new Response(String(n)))
+    await self.registration.setAppBadge(n)
+  } else {
+    await cache.delete('app-badge-count')
+    if ('clearAppBadge' in self.registration) {
+      await self.registration.clearAppBadge()
+    }
+  }
+}
+
+async function incrementAppBadgeCount() {
+  if (!('setAppBadge' in self.registration)) return
+  const cache = await caches.open(BADGE_CACHE)
+  const res = await cache.match('app-badge-count')
+  const count = (res ? parseInt(await res.text(), 10) : 0) + 1
+  await setAppBadgeCount(count)
+}
+
+self.addEventListener('message', (event) => {
+  const data = event.data
+  if (!data || data.type !== 'sync-app-badge') return
+  event.waitUntil(setAppBadgeCount(data.count))
+})
+
 // キャッシュを全て削除して再起動する
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -28,13 +59,18 @@ self.addEventListener('push', (event) => {
   }
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Signaly', {
-      body: data.body || '',
-      icon: 'icon-192.png?v=1.0.8',
-      badge: 'icon-192.png?v=1.0.8',
-      tag: data.id || undefined,
-      data: { url: data.url || './', channel: data.channel || '' },
-    })
+    (async () => {
+      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      if (!clients.length) await incrementAppBadgeCount()
+
+      await self.registration.showNotification(data.title || 'Signaly', {
+        body: data.body || '',
+        icon: 'icon-192.png?v=1.1.0',
+        badge: 'icon-192.png?v=1.1.0',
+        tag: data.id || undefined,
+        data: { url: data.url || './', channel: data.channel || '' },
+      })
+    })()
   )
 })
 

@@ -1,57 +1,36 @@
 'use strict'
 
-const APP_VERSION = '1.0.8'
+const APP_VERSION = '1.1.0'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.1.0',
+    date: '2026-06-29',
+    changes: [
+      '設定画面から通知の動作をテストできるようになった',
+      'チャンネルを開いたとき、未読分が新着として表示されるようになった',
+      '通知設定ボタンの見た目を改善（アイコン付き・コンパクトな配置）',
+    ],
+  },
+  {
+    version: '1.0.9',
+    date: '2026-06-29',
+    changes: [
+      'ホーム画面アイコンに未読件数バッジを表示（iOS 16.4+ / Android / デスクトップ）',
+    ],
+  },
   {
     version: '1.0.8',
     date: '2026-06-29',
     changes: [
       'iOS PWA の初回起動で画面が空白になる問題を修正',
-      'Google ログイン成功時に Webhook へ通知',
     ],
   },
   {
     version: '1.0.7',
     date: '2026-06-29',
     changes: [
-      'Webhook URL を https で発行するよう修正',
-      'CI・デプロイ通知を Discord から Signaly Webhook へ切り替え',
-    ],
-  },
-  {
-    version: '1.0.6',
-    date: '2026-06-29',
-    changes: [
-      '本番デプロイ時に OAuth などアプリ設定を 1Password から .env へ同期',
-    ],
-  },
-  {
-    version: '1.0.5',
-    date: '2026-06-29',
-    changes: [
-      'GitHub Actions デプロイを user systemd に切り替え、sudo 不要に',
-    ],
-  },
-  {
-    version: '1.0.4',
-    date: '2026-06-29',
-    changes: [
-      'GitHub Actions デプロイ時の sudo パスワード要求を解消（restart-service.sh + sudoers）',
-    ],
-  },
-  {
-    version: '1.0.3',
-    date: '2026-06-29',
-    changes: [
-      '初回デプロイ時にサーバー環境を自動セットアップするよう改善',
-    ],
-  },
-  {
-    version: '1.0.2',
-    date: '2026-06-29',
-    changes: [
-      'アプリの安定性と更新反映の改善',
+      '通知用 URL が https で表示されるようになりました',
     ],
   },
   {
@@ -69,7 +48,7 @@ const APP_CHANGELOG = [
       'チャンネルグループ・並び替え・名前変更・削除に対応',
       'チャンネル・グループごとの通知オン/オフ設定',
       'チャンネル URL の共有と、起動時に前回のチャンネルを復元',
-      'Webhook マニュアルページと読み込み・エラー表示を追加',
+      '通知の受け取り方マニュアルページと読み込み・エラー表示を追加',
     ],
   },
   {
@@ -83,24 +62,24 @@ const APP_CHANGELOG = [
     version: '0.2.1',
     date: '2026-06-29',
     changes: [
-      'Discord Webhook 形式（content / embeds）の受信に対応',
+      'Discord から送られた通知をそのまま表示できるようになりました',
     ],
   },
   {
     version: '0.2.0',
     date: '2026-06-29',
     changes: [
-      'Web Push 対応（アプリ終了中もスマホに通知）',
-      'Push 通知タップで該当チャンネルを開く',
+      'スマホにプッシュ通知（アプリを閉じていても届く）',
+      '通知をタップすると該当チャンネルを開く',
     ],
   },
   {
     version: '0.1.0',
     date: '2026-06-28',
     changes: [
-      'ウェブフック通知のリアルタイム受信と表示',
-      'Discord 風の embed フィールド（インライン表示）対応',
-      'デスクトップ通知（PWA）対応',
+      '外部からの通知をリアルタイムで受信・表示',
+      'Discord 形式の通知を見やすく表示（タイトル・本文・複数行の項目）',
+      'ブラウザのデスクトップ通知に対応',
       'Google アカウントによるログイン',
     ],
   },

@@ -3,7 +3,7 @@
 import unittest
 from unittest.mock import patch
 
-from push import send_push_notifications, VAPID_SUBJECT
+from push import send_push_notifications, send_test_push_to_user, VAPID_SUBJECT
 
 
 class TestSendPushNotifications(unittest.TestCase):
@@ -99,6 +99,37 @@ class TestSendPushNotifications(unittest.TestCase):
             }
         )
 
+        self.assertEqual(webpush.call_count, 1)
+
+
+class TestSendTestPushToUser(unittest.TestCase):
+    @patch("push.push_configured", return_value=False)
+    def test_not_configured(self, _configured):
+        result = send_test_push_to_user("user@example.com")
+        self.assertEqual(result["error"], "not_configured")
+
+    @patch("push.push_configured", return_value=True)
+    @patch("push._fetch_subscriptions_for_email", return_value=[])
+    def test_no_subscription(self, _fetch, _configured):
+        result = send_test_push_to_user("user@example.com")
+        self.assertEqual(result["error"], "no_subscription")
+
+    @patch("push.webpush")
+    @patch("push._load_vapid")
+    @patch("push._fetch_subscriptions_for_email")
+    @patch("push.push_configured", return_value=True)
+    def test_sends_to_user_subscriptions(self, _configured, fetch_subs, _load_vapid, webpush):
+        fetch_subs.return_value = [
+            {
+                "id": "1",
+                "email": "user@example.com",
+                "endpoint": "https://fcm.googleapis.com/fcm/send/abc",
+                "p256dh": "k1",
+                "auth": "a1",
+            },
+        ]
+        result = send_test_push_to_user("user@example.com")
+        self.assertEqual(result, {"sent": 1, "failed": 0})
         self.assertEqual(webpush.call_count, 1)
 
 
