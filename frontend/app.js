@@ -10,10 +10,12 @@ function apiUrl(path) {
 }
 
 let activeChannel = null
+let channelsByName = {}
 let eventSource = null
 let unread = {}  // channel_name -> count
 const seenIds = new Set()
 let pollTimer = null
+let pushSubscribed = false
 
 // ── DOM ──────────────────────────────────────────────────────────────────────
 
@@ -171,9 +173,16 @@ function prependCard(entry) {
 
 // ── Channel list ─────────────────────────────────────────────────────────────
 
+const CHANNEL_SETTINGS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <circle cx="12" cy="12" r="3"/>
+  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+</svg>`
+
 function renderChannels(channels, selectName = null) {
   channelList.innerHTML = ''
-  const names = channels.map(c => (typeof c === 'string' ? c : c.name))
+  channelsByName = {}
+  const normalized = channels.map(c => (typeof c === 'string' ? { name: c } : c))
+  const names = normalized.map(c => c.name)
 
   if (!names.length) {
     channelList.innerHTML = '<div class="loading-text">チャンネルなし</div>'
@@ -182,13 +191,37 @@ function renderChannels(channels, selectName = null) {
     return
   }
 
-  for (const name of names) {
+  for (const channel of normalized) {
+    channelsByName[channel.name] = channel
+
+    const row = document.createElement('div')
+    row.className = 'channel-row'
+    row.dataset.channel = channel.name
+
     const btn = document.createElement('button')
+    btn.type = 'button'
     btn.className = 'channel-item'
-    btn.dataset.channel = name
-    btn.textContent = name
-    btn.addEventListener('click', () => selectChannel(name))
-    channelList.appendChild(btn)
+
+    const label = document.createElement('span')
+    label.className = 'channel-item-label'
+    label.textContent = channel.name
+    btn.appendChild(label)
+    btn.addEventListener('click', () => selectChannel(channel.name))
+
+    const settingsBtn = document.createElement('button')
+    settingsBtn.type = 'button'
+    settingsBtn.className = 'channel-settings-btn'
+    settingsBtn.title = 'Webhook URL'
+    settingsBtn.setAttribute('aria-label', `${channel.name} の設定`)
+    settingsBtn.innerHTML = CHANNEL_SETTINGS_ICON
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      openChannelSettings(channel.name)
+    })
+
+    row.appendChild(btn)
+    row.appendChild(settingsBtn)
+    channelList.appendChild(row)
   }
 
   const target = selectName
@@ -197,16 +230,24 @@ function renderChannels(channels, selectName = null) {
   if (target) {
     selectChannel(target)
   } else if (activeChannel) {
-    channelList.querySelectorAll('.channel-item').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.channel === activeChannel)
-    })
+    setActiveChannelRow(activeChannel)
     updateBadge(activeChannel)
   }
 }
 
+function setActiveChannelRow(channelName) {
+  channelList.querySelectorAll('.channel-row').forEach(row => {
+    row.querySelector('.channel-item')?.classList.toggle(
+      'active',
+      row.dataset.channel === channelName,
+    )
+  })
+}
+
 function updateBadge(channelName) {
-  const btn = channelList.querySelector(`[data-channel="${channelName}"]`)
-  if (!btn) return
+  const row = channelList.querySelector(`.channel-row[data-channel="${channelName}"]`)
+  if (!row) return
+  const btn = row.querySelector('.channel-item')
   const count = unread[channelName] || 0
   let badge = btn.querySelector('.badge')
   if (count > 0) {
@@ -230,9 +271,7 @@ async function selectChannel(name) {
   unread[name] = 0
 
   // UI 更新
-  channelList.querySelectorAll('.channel-item').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.channel === name)
-  })
+  setActiveChannelRow(name)
   updateBadge(name)
   channelTitle.textContent = `# ${name}`
   feed.innerHTML = ''
@@ -351,9 +390,67 @@ function connectSSE(channelName) {
   }
 }
 
-// ── Desktop notification ──────────────────────────────────────────────────────
+// ── Desktop / Push notification ─────────────────────────────────────────────
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = atob(base64)
+  const arr = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i)
+  return arr
+}
+
+function pushSupported() {
+  return 'serviceWorker' in navigator && 'PushManager' in window
+}
+
+async function subscribePush() {
+  if (!pushSupported()) return false
+
+  try {
+    const reg = await navigator.serviceWorker.ready
+
+    const keyRes = await fetch(apiUrl('api/push/vapid-public-key'))
+    if (!keyRes.ok) return false
+    const { publicKey } = await keyRes.json()
+
+    let sub = await reg.pushManager.getSubscription()
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      })
+    }
+
+    const json = sub.toJSON()
+    const res = await fetch(apiUrl('api/push/subscribe'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        endpoint: json.endpoint,
+        keys: json.keys,
+      }),
+    })
+
+    pushSubscribed = res.ok
+    return pushSubscribed
+  } catch {
+    pushSubscribed = false
+    return false
+  }
+}
+
+async function syncPushSubscription() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') {
+    pushSubscribed = false
+    return
+  }
+  await subscribePush()
+}
 
 function showDesktopNotification(entry) {
+  if (pushSubscribed) return
   if (!('Notification' in window) || Notification.permission !== 'granted') return
 
   const title = entry.title || `# ${entry.channel}`
@@ -376,10 +473,12 @@ function updateNotifBtnState() {
   notifBtn.hidden = false
   if (Notification.permission === 'granted') {
     notifBtn.classList.add('granted')
-    notifBtn.title = 'デスクトップ通知は有効です'
+    notifBtn.title = pushSubscribed
+      ? 'Push 通知は有効です（バックグラウンド対応）'
+      : '通知は有効です'
   } else {
     notifBtn.classList.remove('granted')
-    notifBtn.title = 'デスクトップ通知を許可する'
+    notifBtn.title = 'Push 通知を許可する'
   }
 }
 
@@ -387,6 +486,9 @@ notifBtn.addEventListener('click', async () => {
   if (!('Notification' in window)) return
   if (Notification.permission === 'default') {
     await Notification.requestPermission()
+  }
+  if (Notification.permission === 'granted') {
+    await subscribePush()
   }
   updateNotifBtnState()
 })
@@ -551,6 +653,51 @@ createChannelCopy?.addEventListener('click', async () => {
   }
 })
 
+// ── Channel settings (Webhook URL) ────────────────────────────────────────────
+
+const channelSettingsDialog = document.getElementById('channel-settings-dialog')
+const channelSettingsClose = document.getElementById('channel-settings-close')
+const channelSettingsName = document.getElementById('channel-settings-name')
+const channelSettingsWebhook = document.getElementById('channel-settings-webhook')
+const channelSettingsCopy = document.getElementById('channel-settings-copy')
+
+function openChannelSettings(channelName) {
+  const channel = channelsByName[channelName]
+  if (!channel?.webhook_url) return
+
+  channelSettingsName.textContent = channelName
+  channelSettingsWebhook.value = channel.webhook_url
+  channelSettingsDialog?.classList.add('open')
+  closeSidebar()
+}
+
+function closeChannelSettingsDialog() {
+  channelSettingsDialog?.classList.remove('open')
+}
+
+channelSettingsClose?.addEventListener('click', closeChannelSettingsDialog)
+
+channelSettingsDialog?.addEventListener('click', (e) => {
+  if (e.target === channelSettingsDialog) closeChannelSettingsDialog()
+})
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && channelSettingsDialog?.classList.contains('open')) {
+    closeChannelSettingsDialog()
+  }
+})
+
+channelSettingsCopy?.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(channelSettingsWebhook.value)
+    channelSettingsCopy.textContent = 'コピー済み'
+    setTimeout(() => { channelSettingsCopy.textContent = 'コピー' }, 2000)
+  } catch {
+    channelSettingsWebhook.select()
+    document.execCommand('copy')
+  }
+})
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 const loginOverlay = document.getElementById('login-overlay')
@@ -591,8 +738,10 @@ async function init() {
   if (loginLink) loginLink.href = apiUrl('auth/login')
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {})
+    await navigator.serviceWorker.register('./sw.js').catch(() => {})
   }
+
+  const urlChannel = new URLSearchParams(location.search).get('channel')
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
@@ -607,7 +756,13 @@ async function init() {
     const { channels } = await res.json()
     addLogoutButton()
     addChannelBtn.hidden = false
-    renderChannels(channels)
+    renderChannels(channels, urlChannel)
+    try {
+      await syncPushSubscription()
+    } catch {
+      pushSubscribed = false
+    }
+    updateNotifBtnState()
   } catch (err) {
     clearTimeout(timeout)
     const msg = err.name === 'AbortError' ? 'タイムアウト' : err.message

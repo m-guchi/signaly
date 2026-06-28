@@ -10,3 +10,6 @@ GOOGLE_REDIRECT_URI=op://apps/signaly/google-redirect-uri
 APP_URL=op://apps/signaly/app-url
 ALLOWED_EMAILS=op://apps/signaly/allowed-emails
 SECRET_KEY=op://apps/signaly/secret-key
+VAPID_PUBLIC_KEY=op://apps/signaly/vapid-public-key
+VAPID_PRIVATE_KEY=op://apps/signaly/vapid-private-key
+VAPID_SUBJECT=op://apps/signaly/vapid-subject

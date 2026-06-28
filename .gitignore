@@ -3,6 +3,10 @@
 .env.local
 .env.production
 backend/channels.json
+backend/private_key.pem
+backend/public_key.pem
+private_key.pem
+public_key.pem
 
 # データ（VPS 上で生成されるログ）
 backend/data/

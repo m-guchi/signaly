@@ -15,4 +15,41 @@ self.addEventListener('activate', (event) => {
   self.clients.claim()
 })
 
+// ── Web Push（アプリ終了中も通知）────────────────────────────────────────────
+
+self.addEventListener('push', (event) => {
+  let data = { title: 'Signaly', body: '', url: './' }
+  if (event.data) {
+    try {
+      data = { ...data, ...event.data.json() }
+    } catch {
+      data.body = event.data.text()
+    }
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Signaly', {
+      body: data.body || '',
+      icon: 'icon.svg',
+      badge: 'icon.svg',
+      tag: data.id || undefined,
+      data: { url: data.url || './', channel: data.channel || '' },
+    })
+  )
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const targetUrl = event.notification.data?.url || './'
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ('focus' in client) return client.focus()
+      }
+      return self.clients.openWindow(targetUrl)
+    })
+  )
+})
+
 // キャッシュしない：全リクエストをネットワークから取得

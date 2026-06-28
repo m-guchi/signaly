@@ -1,8 +1,16 @@
 'use strict'
 
-const APP_VERSION = '0.1.0'
+const APP_VERSION = '0.2.0'
 
 const APP_CHANGELOG = [
+  {
+    version: '0.2.0',
+    date: '2026-06-29',
+    changes: [
+      'Web Push 対応（アプリ終了中もスマホに通知）',
+      'Push 通知タップで該当チャンネルを開く',
+    ],
+  },
   {
     version: '0.1.0',
     date: '2026-06-28',

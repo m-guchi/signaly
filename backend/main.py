@@ -1,5 +1,6 @@
 import json
 import asyncio
+import hashlib
 import os
 import secrets
 import urllib.parse
@@ -17,7 +18,8 @@ from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
-from database import Channel, Notification, get_session, init_db
+from database import Channel, Notification, PushSubscription, get_session, init_db
+from push import push_configured, send_push_notifications
 
 BASE_DIR = Path(__file__).parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
@@ -35,6 +37,8 @@ ALLOWED_EMAILS: Set[str] = {
     e.strip() for e in os.getenv("ALLOWED_EMAILS", "").split(",") if e.strip()
 }
 SECRET_KEY = os.getenv("SECRET_KEY", "")
+
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
 
 SESSION_COOKIE = "signaly_session"
 STATE_COOKIE = "signaly_oauth_state"
@@ -133,6 +137,46 @@ def _fetch_history(channel_name: str, limit: int) -> List[dict]:
             }
             for r in rows
         ]
+
+
+def _endpoint_hash(endpoint: str) -> str:
+    return hashlib.sha256(endpoint.encode()).hexdigest()
+
+
+def _upsert_push_subscription(email: str, endpoint: str, p256dh: str, auth: str) -> None:
+    now = datetime.now(timezone.utc)
+    ep_hash = _endpoint_hash(endpoint)
+    with get_session() as session:
+        existing = session.query(PushSubscription).filter(PushSubscription.endpoint_hash == ep_hash).first()
+        if existing:
+            existing.email = email
+            existing.endpoint = endpoint
+            existing.p256dh = p256dh
+            existing.auth = auth
+            existing.updated_at = now
+        else:
+            session.add(
+                PushSubscription(
+                    id=str(uuid.uuid4()),
+                    email=email,
+                    endpoint_hash=ep_hash,
+                    endpoint=endpoint,
+                    p256dh=p256dh,
+                    auth=auth,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        session.commit()
+
+
+def _delete_push_subscription(endpoint: str) -> None:
+    ep_hash = _endpoint_hash(endpoint)
+    with get_session() as session:
+        row = session.query(PushSubscription).filter(PushSubscription.endpoint_hash == ep_hash).first()
+        if row:
+            session.delete(row)
+            session.commit()
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
@@ -283,6 +327,8 @@ async def receive_webhook(channel_id: str, payload: WebhookPayload):
         except asyncio.QueueFull:
             _subscribers[channel_name].remove(q)
 
+    asyncio.create_task(asyncio.to_thread(send_push_notifications, entry))
+
     return {"ok": True, "id": entry["id"]}
 
 
@@ -385,6 +431,47 @@ async def stream_events(channel_name: str, request: Request, email: str = Depend
             "Connection": "keep-alive",
         },
     )
+
+
+# ── Web Push ──────────────────────────────────────────────────────────────────
+
+class PushSubscribeBody(BaseModel):
+    endpoint: str
+    keys: dict
+
+    @field_validator("keys")
+    @classmethod
+    def validate_keys(cls, v: dict) -> dict:
+        if not v.get("p256dh") or not v.get("auth"):
+            raise ValueError("keys.p256dh と keys.auth が必要です")
+        return v
+
+
+@app.get("/api/push/vapid-public-key")
+async def push_vapid_public_key(email: str = Depends(require_auth)):
+    if not push_configured():
+        raise HTTPException(status_code=503, detail="Web Push が設定されていません")
+    return {"publicKey": VAPID_PUBLIC_KEY}
+
+
+@app.post("/api/push/subscribe")
+async def push_subscribe(body: PushSubscribeBody, email: str = Depends(require_auth)):
+    if not push_configured():
+        raise HTTPException(status_code=503, detail="Web Push が設定されていません")
+    await asyncio.to_thread(
+        _upsert_push_subscription,
+        email,
+        body.endpoint,
+        body.keys["p256dh"],
+        body.keys["auth"],
+    )
+    return {"ok": True}
+
+
+@app.post("/api/push/unsubscribe")
+async def push_unsubscribe(body: PushSubscribeBody, email: str = Depends(require_auth)):
+    await asyncio.to_thread(_delete_push_subscription, body.endpoint)
+    return {"ok": True}
 
 
 # フロントエンドの静的ファイルを最後にマウント

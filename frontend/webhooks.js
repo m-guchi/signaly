@@ -4,72 +4,137 @@ function apiUrl(path) {
   return '/' + path.replace(/^\//, '')
 }
 
-const webhooksList = document.getElementById('webhooks-list')
-const loginOverlay = document.getElementById('login-overlay')
+let channels = []
+let activeChannel = null
 
-async function copyText(text, btn) {
-  try {
-    await navigator.clipboard.writeText(text)
-    const original = btn.textContent
-    btn.textContent = 'コピー済み'
-    setTimeout(() => { btn.textContent = original }, 2000)
-  } catch {
-  }
+const channelList = document.getElementById('channel-list')
+const channelTitle = document.getElementById('channel-title')
+const webhookDetail = document.getElementById('webhook-detail')
+const webhookEmpty = document.getElementById('webhook-empty')
+const webhookUrlInput = document.getElementById('webhook-url-input')
+const webhookCopyBtn = document.getElementById('webhook-copy-btn')
+const webhookExampleCode = document.getElementById('webhook-example-code')
+const loginOverlay = document.getElementById('login-overlay')
+const sidebar = document.getElementById('sidebar')
+const sidebarToggle = document.getElementById('sidebar-toggle')
+const sidebarBackdrop = document.getElementById('sidebar-backdrop')
+
+const mobileSidebarMq = window.matchMedia('(max-width: 767px)')
+
+function isMobileSidebar() {
+  return mobileSidebarMq.matches
 }
 
-function renderWebhooks(channels) {
-  webhooksList.innerHTML = ''
-
-  if (!channels.length) {
-    webhooksList.innerHTML = '<div class="loading-text">チャンネルがありません。通知ページから作成してください。</div>'
+function setSidebarOpen(open) {
+  if (!isMobileSidebar()) {
+    sidebar.classList.remove('sidebar--open')
+    sidebarBackdrop.classList.remove('visible')
+    sidebarBackdrop.hidden = true
+    sidebarBackdrop.setAttribute('aria-hidden', 'true')
+    sidebarToggle?.setAttribute('aria-expanded', 'false')
+    sidebarToggle?.setAttribute('aria-label', 'メニューを開く')
     return
   }
 
-  const exampleCode = document.querySelector('.webhooks-example-code code')
-  if (exampleCode && channels[0]?.webhook_url) {
-    exampleCode.textContent = `curl -X POST "${channels[0].webhook_url}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"title":"デプロイ完了","message":"v1.2.3 を本番に反映しました","level":"info"}'`
+  sidebar.classList.toggle('sidebar--open', open)
+  sidebarBackdrop.classList.toggle('visible', open)
+  sidebarBackdrop.hidden = !open
+  sidebarBackdrop.setAttribute('aria-hidden', open ? 'false' : 'true')
+  sidebarToggle?.setAttribute('aria-expanded', open ? 'true' : 'false')
+  sidebarToggle?.setAttribute('aria-label', open ? 'メニューを閉じる' : 'メニューを開く')
+}
+
+function closeSidebar() {
+  setSidebarOpen(false)
+}
+
+sidebarToggle?.addEventListener('click', () => {
+  setSidebarOpen(!sidebar.classList.contains('sidebar--open'))
+})
+
+sidebarBackdrop?.addEventListener('click', closeSidebar)
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeSidebar()
+})
+
+mobileSidebarMq.addEventListener('change', () => {
+  if (!isMobileSidebar()) closeSidebar()
+})
+
+function channelFromQuery() {
+  return new URLSearchParams(location.search).get('channel')
+}
+
+function updatePageUrl(channelName) {
+  const url = new URL(location.href)
+  url.searchParams.set('channel', channelName)
+  history.replaceState(null, '', url)
+}
+
+function renderChannelList(selectName = null) {
+  channelList.innerHTML = ''
+
+  if (!channels.length) {
+    channelList.innerHTML = '<div class="loading-text">チャンネルなし</div>'
+    activeChannel = null
+    channelTitle.textContent = 'チャンネルを選択'
+    webhookDetail.hidden = true
+    webhookEmpty.hidden = false
+    return
   }
 
   for (const channel of channels) {
-    const card = document.createElement('article')
-    card.className = 'webhook-card'
-
-    const heading = document.createElement('h2')
-    heading.className = 'webhook-card-title'
-    heading.textContent = `# ${channel.name}`
-
-    const label = document.createElement('label')
-    label.className = 'create-channel-label'
-    label.textContent = 'Webhook URL'
-    label.htmlFor = `webhook-url-${channel.id}`
-
-    const row = document.createElement('div')
-    row.className = 'create-channel-webhook-row'
-
-    const input = document.createElement('input')
-    input.id = `webhook-url-${channel.id}`
-    input.className = 'create-channel-input create-channel-webhook-input'
-    input.type = 'text'
-    input.value = channel.webhook_url
-    input.readOnly = true
-
-    const copyBtn = document.createElement('button')
-    copyBtn.type = 'button'
-    copyBtn.className = 'create-channel-copy'
-    copyBtn.textContent = 'コピー'
-    copyBtn.addEventListener('click', () => copyText(channel.webhook_url, copyBtn))
-
-    row.appendChild(input)
-    row.appendChild(copyBtn)
-
-    card.appendChild(heading)
-    card.appendChild(label)
-    card.appendChild(row)
-    webhooksList.appendChild(card)
+    const btn = document.createElement('button')
+    btn.className = 'channel-item'
+    btn.dataset.channel = channel.name
+    btn.textContent = channel.name
+    btn.addEventListener('click', () => selectChannel(channel.name))
+    channelList.appendChild(btn)
   }
+
+  const queryChannel = selectName ?? channelFromQuery()
+  const target = queryChannel && channels.some(c => c.name === queryChannel)
+    ? queryChannel
+    : channels[0].name
+
+  selectChannel(target)
 }
+
+function selectChannel(name) {
+  const channel = channels.find(c => c.name === name)
+  if (!channel) return
+
+  activeChannel = name
+  channelList.querySelectorAll('.channel-item').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.channel === name)
+  })
+
+  channelTitle.textContent = `# ${name}`
+  document.title = `Webhook — #${name} — Signaly`
+
+  webhookUrlInput.value = channel.webhook_url
+  webhookExampleCode.textContent = `curl -X POST "${channel.webhook_url}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"title":"デプロイ完了","message":"v1.2.3 を本番に反映しました","level":"info"}'`
+
+  webhookDetail.hidden = false
+  webhookEmpty.hidden = true
+  updatePageUrl(name)
+  closeSidebar()
+}
+
+webhookCopyBtn?.addEventListener('click', async () => {
+  const text = webhookUrlInput.value
+  try {
+    await navigator.clipboard.writeText(text)
+    webhookCopyBtn.textContent = 'コピー済み'
+    setTimeout(() => { webhookCopyBtn.textContent = 'コピー' }, 2000)
+  } catch {
+    webhookUrlInput.select()
+    document.execCommand('copy')
+  }
+})
 
 function addLogoutButton() {
   const header = document.querySelector('.sidebar-header')
@@ -164,13 +229,14 @@ async function init() {
       return
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const { channels } = await res.json()
+    const data = await res.json()
+    channels = data.channels
     addLogoutButton()
-    renderWebhooks(channels)
+    renderChannelList()
   } catch (err) {
     clearTimeout(timeout)
     const msg = err.name === 'AbortError' ? 'タイムアウト' : err.message
-    webhooksList.innerHTML = `<div class="loading-text">読み込み失敗 (${msg})</div>`
+    channelList.innerHTML = `<div class="loading-text">読み込み失敗 (${msg})</div>`
   }
 }
 

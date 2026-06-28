@@ -41,6 +41,19 @@ class Notification(Base):
     color = Column(String(20), nullable=True)  # CSS hex color e.g. #57f287
 
 
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+
+    id = Column(String(36), primary_key=True)
+    email = Column(String(255), nullable=False, index=True)
+    endpoint_hash = Column(String(64), nullable=False, unique=True)
+    endpoint = Column(Text, nullable=False)
+    p256dh = Column(String(255), nullable=False)
+    auth = Column(String(255), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
 def get_session() -> Session:
     return Session(engine)
 

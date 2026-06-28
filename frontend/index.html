@@ -30,10 +30,6 @@
           </svg>
         </button>
       </div>
-      <nav class="sidebar-nav" aria-label="ナビゲーション">
-        <a href="./" class="sidebar-nav-item active" aria-current="page">通知</a>
-        <a href="webhooks.html" class="sidebar-nav-item">Webhook URL</a>
-      </nav>
       <div class="channel-section-header">
         <span class="channel-section-label">チャンネル</span>
         <button id="add-channel-btn" class="add-channel-btn" type="button" title="チャンネルを作成" aria-label="チャンネルを作成" hidden>
@@ -89,6 +85,24 @@
         </div>
         <p class="create-channel-hint">この URL に POST すると通知が届きます。</p>
         <button id="create-channel-done" type="button" class="create-channel-submit">完了</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="channel-settings-dialog" class="changelog-dialog" role="dialog" aria-modal="true" aria-label="チャンネル設定">
+    <div class="changelog-panel create-channel-panel">
+      <div class="changelog-header">
+        <h2 class="changelog-title" id="channel-settings-title">チャンネル設定</h2>
+        <button id="channel-settings-close" class="changelog-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="create-channel-body">
+        <p class="create-channel-success-text">チャンネル <strong id="channel-settings-name"></strong> の Webhook URL です。</p>
+        <label class="create-channel-label" for="channel-settings-webhook">Webhook URL</label>
+        <div class="create-channel-webhook-row">
+          <input id="channel-settings-webhook" class="create-channel-input create-channel-webhook-input" type="text" readonly>
+          <button id="channel-settings-copy" type="button" class="create-channel-copy" title="コピー">コピー</button>
+        </div>
+        <p class="create-channel-hint">この URL に POST すると通知が届きます。</p>
       </div>
     </div>
   </div>
