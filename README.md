@@ -104,6 +104,8 @@ bash scripts/portforward.sh
 .venv/bin/python -m unittest discover -s backend -p 'test_*.py'
 ```
 
+GitHub Actions の `ci.yml` も同じテストを `develop` への push と PR（`main` / `develop` 向け）で実行します。
+
 ## 環境変数
 
 | 変数 | 用途 |

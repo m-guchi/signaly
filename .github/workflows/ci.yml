@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - develop
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && pip install -r backend/requirements.txt
+
+      - name: Run backend tests
+        run: python -m unittest discover -s backend -p 'test_*.py' -v
+        env:
+          DB_NAME: ci_signaly
+          DB_USER: ci
+          DB_PASSWORD: ci
+          DB_HOST: 127.0.0.1
+          DB_PORT: "3306"
+
+  notify:
+    needs: [backend]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine workflow status
+        id: status
+        run: |
+          backend="${{ needs.backend.result }}"
+          if [ "$backend" = "success" ]; then
+            result=success
+          elif [ "$backend" = "cancelled" ]; then
+            result=cancelled
+          else
+            result=failure
+          fi
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+          if [ "$backend" = "success" ]; then
+            echo "jobs=backend" >> "$GITHUB_OUTPUT"
+          else
+            echo "jobs=backend: $backend" >> "$GITHUB_OUTPUT"
+          fi
+          # develop push: failure only. main PR: success, failure, and cancelled.
+          if [ "$result" = "failure" ]; then
+            echo "should_notify=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.base_ref }}" = "main" ]; then
+            echo "should_notify=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_notify=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Load secrets from 1Password
+        if: steps.status.outputs.should_notify == 'true'
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          OP_ENV_FILE: .github/ci.env.tpl
+
+      - name: Notify Discord
+        if: steps.status.outputs.should_notify == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ env.DISCORD_CI_WEBHOOK_URL }}
+          NOTIFY_APP: Signaly
+          NOTIFY_KIND: CI
+          NOTIFY_STATUS: ${{ steps.status.outputs.result }}
+          NOTIFY_JOB: ${{ steps.status.outputs.jobs }}
+        run: bash .github/scripts/discord-notify.sh
