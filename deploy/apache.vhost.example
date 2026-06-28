@@ -1,0 +1,32 @@
+# Signaly — Apache VirtualHost 例（signaly.gucchii.com / ルート公開）
+# /etc/apache2/sites-available/signaly.gucchii.com.conf などに配置し a2ensite する。
+
+<IfModule mod_ssl.c>
+<VirtualHost *:443>
+    ServerName signaly.gucchii.com
+
+    SSLEngine on
+    SSLCertificateFile      /etc/letsencrypt/live/signaly.gucchii.com/fullchain.pem
+    SSLCertificateKeyFile   /etc/letsencrypt/live/signaly.gucchii.com/privkey.pem
+    Include                 /etc/letsencrypt/options-ssl-apache.conf
+
+    ErrorLog ${APACHE_LOG_DIR}/signaly.gucchii.com-error.log
+    CustomLog ${APACHE_LOG_DIR}/signaly.gucchii.com-access.log combined
+
+    # deploy/apache.conf の内容
+    ProxyPreserveHost On
+    ProxyPass        / http://127.0.0.1:8002/ flushpackets=on
+    ProxyPassReverse / http://127.0.0.1:8002/
+
+    <Location /api/stream/>
+        ProxyPass        http://127.0.0.1:8002/api/stream/ flushpackets=on timeout=3600
+        ProxyPassReverse http://127.0.0.1:8002/api/stream/
+    </Location>
+</VirtualHost>
+</IfModule>
+
+# HTTP → HTTPS リダイレクト（任意）
+<VirtualHost *:80>
+    ServerName signaly.gucchii.com
+    Redirect permanent / https://signaly.gucchii.com/
+</VirtualHost>

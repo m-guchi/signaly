@@ -24,6 +24,13 @@ rsync -az --delete \
 echo "==> Python 仮想環境を作成"
 bash "$TARGET_DIR/deploy/ensure_venv.sh" "$TARGET_DIR"
 
+echo "==> .env を 1Password から生成"
+if command -v op >/dev/null 2>&1; then
+  op inject -i "${TARGET_DIR}/.env.tpl" -o "${TARGET_DIR}/.env" --force
+else
+  echo "  !! op CLI がありません。1Password の値を ${TARGET_DIR}/.env に手動で設定してください"
+fi
+
 echo "==> channels.json が存在しない場合は例をコピー"
 if [[ ! -f "$TARGET_DIR/backend/channels.json" ]]; then
   cp "$TARGET_DIR/channels.example.json" "$TARGET_DIR/backend/channels.json"
@@ -46,4 +53,4 @@ install_systemd_service
 systemctl --user status signaly --no-pager
 
 echo "==> 完了"
-echo "  Apache 設定は deploy/apache.conf を VirtualHost に追記してください"
+echo "  Apache 設定は deploy/apache.conf を signaly.gucchii.com の VirtualHost に追記してください（ルート / を 8002 にプロキシ）"

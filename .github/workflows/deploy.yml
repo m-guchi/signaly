@@ -77,27 +77,50 @@ jobs:
 
       - name: VPS にデプロイ
         env:
-          TARGET_DIR:  ${{ env.TARGET_DIR }}
-          DB_NAME:     ${{ env.DB_NAME }}
-          DB_USER:     ${{ env.DB_USER }}
-          DB_PASSWORD: ${{ env.DB_PASSWORD }}
-          DB_HOST:     ${{ env.DB_HOST }}
-          DB_PORT:     ${{ env.DB_PORT }}
+          TARGET_DIR:           ${{ env.TARGET_DIR }}
+          DB_NAME:              ${{ env.DB_NAME }}
+          DB_USER:              ${{ env.DB_USER }}
+          DB_PASSWORD:          ${{ env.DB_PASSWORD }}
+          DB_HOST:              ${{ env.DB_HOST }}
+          DB_PORT:              ${{ env.DB_PORT }}
+          GOOGLE_CLIENT_ID:     ${{ env.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ env.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REDIRECT_URI:  ${{ env.GOOGLE_REDIRECT_URI }}
+          APP_URL:              ${{ env.APP_URL }}
+          ALLOWED_EMAILS:       ${{ env.ALLOWED_EMAILS }}
+          SECRET_KEY:           ${{ env.SECRET_KEY }}
+          VAPID_PUBLIC_KEY:     ${{ env.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY:    ${{ env.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT:        ${{ env.VAPID_SUBJECT }}
         run: |
           rsync -az --delete \
             -e "ssh -p ${SSH_PORT}" \
             --exclude='.git' \
             --exclude='.venv' \
+            --exclude='.env' \
             --exclude='backend/channels.json' \
             ./ "${USERNAME}@${HOST}:${TARGET_DIR}/"
 
           b64() { printf '%s' "$1" | base64 -w 0; }
+          GOOGLE_CLIENT_ID_B64=$(b64 "$GOOGLE_CLIENT_ID")
+          GOOGLE_CLIENT_SECRET_B64=$(b64 "$GOOGLE_CLIENT_SECRET")
+          GOOGLE_REDIRECT_URI_B64=$(b64 "$GOOGLE_REDIRECT_URI")
+          APP_URL_B64=$(b64 "$APP_URL")
+          ALLOWED_EMAILS_B64=$(b64 "$ALLOWED_EMAILS")
+          SECRET_KEY_B64=$(b64 "$SECRET_KEY")
+          VAPID_PUBLIC_KEY_B64=$(b64 "$VAPID_PUBLIC_KEY")
+          VAPID_PRIVATE_KEY_B64=$(b64 "$VAPID_PRIVATE_KEY")
+          VAPID_SUBJECT_B64=$(b64 "$VAPID_SUBJECT")
+          DB_NAME_B64=$(b64 "$DB_NAME")
+          DB_USER_B64=$(b64 "$DB_USER")
+          DB_PASSWORD_B64=$(b64 "$DB_PASSWORD")
+          DB_HOST_B64=$(b64 "$DB_HOST")
+          DB_PORT_B64=$(b64 "$DB_PORT")
 
           ssh -p "${SSH_PORT}" "${USERNAME}@${HOST}" << EOF
             set -e
             cd "${TARGET_DIR}"
 
-            # .env に DB 接続情報を書き込む（既存行を上書き）
             sync_env_var() {
               key="\$1"
               value="\$(printf '%s' "\$2" | base64 -d)"
@@ -108,11 +131,20 @@ jobs:
               printf '%s=%s\n' "\$key" "\$value" >> .env
             }
 
-            sync_env_var DB_NAME     '$(b64 "$DB_NAME")'
-            sync_env_var DB_USER     '$(b64 "$DB_USER")'
-            sync_env_var DB_PASSWORD '$(b64 "$DB_PASSWORD")'
-            sync_env_var DB_HOST     '$(b64 "$DB_HOST")'
-            sync_env_var DB_PORT     '$(b64 "$DB_PORT")'
+            sync_env_var GOOGLE_CLIENT_ID     '${GOOGLE_CLIENT_ID_B64}'
+            sync_env_var GOOGLE_CLIENT_SECRET '${GOOGLE_CLIENT_SECRET_B64}'
+            sync_env_var GOOGLE_REDIRECT_URI  '${GOOGLE_REDIRECT_URI_B64}'
+            sync_env_var APP_URL              '${APP_URL_B64}'
+            sync_env_var ALLOWED_EMAILS       '${ALLOWED_EMAILS_B64}'
+            sync_env_var SECRET_KEY           '${SECRET_KEY_B64}'
+            sync_env_var VAPID_PUBLIC_KEY     '${VAPID_PUBLIC_KEY_B64}'
+            sync_env_var VAPID_PRIVATE_KEY    '${VAPID_PRIVATE_KEY_B64}'
+            sync_env_var VAPID_SUBJECT        '${VAPID_SUBJECT_B64}'
+            sync_env_var DB_NAME              '${DB_NAME_B64}'
+            sync_env_var DB_USER              '${DB_USER_B64}'
+            sync_env_var DB_PASSWORD          '${DB_PASSWORD_B64}'
+            sync_env_var DB_HOST              '${DB_HOST_B64}'
+            sync_env_var DB_PORT              '${DB_PORT_B64}'
 
             bash deploy/ensure_venv.sh "${TARGET_DIR}"
 
