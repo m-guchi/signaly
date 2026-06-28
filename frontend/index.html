@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.json?v=0.2.0">
   <link rel="icon" href="icon.svg?v=0.2.0" type="image/svg+xml">
   <link rel="apple-touch-icon" href="apple-touch-icon.png?v=0.2.0">
-  <link rel="stylesheet" href="style.css?v=0.2.10">
+  <link rel="stylesheet" href="style.css?v=0.2.12">
   <meta name="theme-color" content="#000000">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -54,7 +54,7 @@
       </div>
       <p id="reorder-hint" class="reorder-hint" hidden>ドラッグで並び替え。完了は ✓ を押してください。</p>
       <nav id="channel-list" aria-label="チャンネル一覧">
-        <div class="loading-text">読み込み中…</div>
+        <div class="loading-text"><span class="loading-spinner" aria-hidden="true"></span>読み込み中…</div>
       </nav>
     </aside>
 
@@ -73,6 +73,13 @@
       <div id="feed-viewport" class="feed-viewport">
         <div id="feed-sticky-date" class="feed-sticky-date" hidden></div>
         <div id="feed" role="log" aria-live="polite" aria-relevant="additions"></div>
+        <div id="feed-state" class="feed-state" hidden>
+          <div class="feed-state-inner">
+            <span id="feed-state-spinner" class="loading-spinner" aria-hidden="true"></span>
+            <p id="feed-state-text" class="feed-state-text"></p>
+            <button id="feed-state-retry" type="button" class="feed-state-retry" hidden>再試行</button>
+          </div>
+        </div>
       </div>
       <button id="new-notif-banner" type="button" class="new-notif-banner" hidden>新着</button>
       <div id="empty-state" class="empty-state" hidden>通知はまだありません</div>
@@ -289,6 +296,13 @@
         </section>
 
         <section class="settings-section">
+          <h3 class="settings-section-title">Webhook</h3>
+          <p class="settings-doc-hint">
+            <a href="webhook-docs.html" class="settings-doc-link">POST 形式のマニュアル</a>
+          </p>
+        </section>
+
+        <section class="settings-section">
           <h3 class="settings-section-title">表示テーマ</h3>
           <div class="theme-segment" role="radiogroup" aria-label="表示テーマ">
             <button type="button" class="theme-segment-btn" data-theme="light" role="radio" aria-checked="false">ライト</button>
@@ -354,6 +368,6 @@
   <script src="dialog.js?v=0.2.10"></script>
   <script src="reorder.js?v=0.2.10"></script>
   <script src="settings.js?v=0.2.10"></script>
-  <script src="app.js?v=0.2.11"></script>
+  <script src="app.js?v=0.2.12"></script>
 </body>
 </html>

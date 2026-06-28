@@ -91,6 +91,37 @@ function hideWebhookUrl() {
   if (webhookCopyBtn) webhookCopyBtn.textContent = 'コピー'
 }
 
+function showChannelListLoading() {
+  channelList.innerHTML = '<div class="loading-text"><span class="loading-spinner" aria-hidden="true"></span>読み込み中…</div>'
+}
+
+function showChannelListError(detail, retryFn) {
+  channelList.innerHTML = ''
+  const wrap = document.createElement('div')
+  wrap.className = 'loading-text loading-text--error'
+
+  const message = document.createElement('p')
+  message.className = 'loading-text-message'
+  message.textContent = '読み込みに失敗しました'
+
+  const detailEl = document.createElement('p')
+  detailEl.className = 'loading-text-detail'
+  detailEl.textContent = detail
+
+  wrap.append(message, detailEl)
+
+  if (retryFn) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'loading-retry-btn'
+    btn.textContent = '再試行'
+    btn.addEventListener('click', retryFn)
+    wrap.appendChild(btn)
+  }
+
+  channelList.appendChild(wrap)
+}
+
 function renderChannelList(selectName = null) {
   channelList.innerHTML = ''
 
@@ -272,6 +303,8 @@ async function init() {
   const loginLink = document.getElementById('login-link')
   if (loginLink) loginLink.href = apiUrl('auth/login')
 
+  showChannelListLoading()
+
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
   try {
@@ -291,7 +324,7 @@ async function init() {
   } catch (err) {
     clearTimeout(timeout)
     const msg = err.name === 'AbortError' ? 'タイムアウト' : err.message
-    channelList.innerHTML = `<div class="loading-text">読み込み失敗 (${msg})</div>`
+    showChannelListError(msg, init)
   }
 }
 

@@ -30,6 +30,10 @@ const NEW_CARD_FADE_MS = 60000
 const channelList = document.getElementById('channel-list')
 const feed = document.getElementById('feed')
 const feedStickyDate = document.getElementById('feed-sticky-date')
+const feedState = document.getElementById('feed-state')
+const feedStateText = document.getElementById('feed-state-text')
+const feedStateSpinner = document.getElementById('feed-state-spinner')
+const feedStateRetry = document.getElementById('feed-state-retry')
 const emptyState = document.getElementById('empty-state')
 const newNotifBanner = document.getElementById('new-notif-banner')
 const channelTitle = document.getElementById('channel-title')
@@ -148,6 +152,73 @@ function setStatus(state) {
   const titles = { connected: '接続中', connecting: '接続中…', disconnected: '切断' }
   statusEl.title = titles[state] ?? state
 }
+
+let feedStateRetryFn = null
+
+function showChannelListLoading() {
+  channelList.innerHTML = '<div class="loading-text"><span class="loading-spinner" aria-hidden="true"></span>読み込み中…</div>'
+}
+
+function showChannelListError(detail, retryFn) {
+  channelList.innerHTML = ''
+  const wrap = document.createElement('div')
+  wrap.className = 'loading-text loading-text--error'
+
+  const message = document.createElement('p')
+  message.className = 'loading-text-message'
+  message.textContent = '読み込みに失敗しました'
+
+  const detailEl = document.createElement('p')
+  detailEl.className = 'loading-text-detail'
+  detailEl.textContent = detail
+
+  wrap.append(message, detailEl)
+
+  if (retryFn) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'loading-retry-btn'
+    btn.textContent = '再試行'
+    btn.addEventListener('click', retryFn)
+    wrap.appendChild(btn)
+  }
+
+  channelList.appendChild(wrap)
+}
+
+function showFeedLoading() {
+  if (emptyState) emptyState.hidden = true
+  if (!feedState) return
+  feedState.hidden = false
+  feedState.className = 'feed-state feed-state--loading'
+  if (feedStateText) feedStateText.textContent = '読み込み中…'
+  if (feedStateSpinner) feedStateSpinner.hidden = false
+  if (feedStateRetry) feedStateRetry.hidden = true
+  feedStateRetryFn = null
+}
+
+function showFeedError(message, retryFn) {
+  if (emptyState) emptyState.hidden = true
+  if (!feedState) return
+  feedState.hidden = false
+  feedState.className = 'feed-state feed-state--error'
+  if (feedStateText) feedStateText.textContent = message
+  if (feedStateSpinner) feedStateSpinner.hidden = true
+  if (feedStateRetry) {
+    feedStateRetry.hidden = !retryFn
+    feedStateRetryFn = retryFn || null
+  }
+}
+
+function hideFeedState() {
+  if (feedState) feedState.hidden = true
+  feedStateRetryFn = null
+}
+
+feedStateRetry?.addEventListener('click', () => {
+  const fn = feedStateRetryFn
+  if (fn) fn()
+})
 
 function loadLastReadAt() {
   try {
@@ -722,6 +793,7 @@ async function selectChannel(name) {
   feed.innerHTML = ''
   if (feedStickyDate) feedStickyDate.hidden = true
   if (emptyState) emptyState.hidden = true
+  hideFeedState()
   seenIds.clear()
   setStatus('connecting')
 
@@ -733,10 +805,20 @@ async function selectChannel(name) {
 }
 
 async function loadHistory(channelName) {
+  showFeedLoading()
   try {
     const res = await fetch(apiUrl(`api/history/${channelName}`))
-    if (!res.ok) return
+    if (activeChannel !== channelName) return
+    if (!res.ok) {
+      showFeedError(
+        `読み込みに失敗しました (HTTP ${res.status})`,
+        () => loadHistory(channelName),
+      )
+      return
+    }
     const { logs } = await res.json()
+    if (activeChannel !== channelName) return
+    hideFeedState()
     if (!logs.length) {
       markChannelRead(channelName)
       if (emptyState) emptyState.hidden = false
@@ -761,8 +843,13 @@ async function loadHistory(channelName) {
     // 最新が上になるよう先頭にスクロール
     feed.scrollTop = 0
     updateStickyFeedDate()
-  } catch {
-    // ネットワーク失敗時はサイレントに無視
+  } catch (err) {
+    if (activeChannel !== channelName) return
+    const msg = err.name === 'AbortError' ? 'タイムアウト' : 'ネットワークエラー'
+    showFeedError(
+      `読み込みに失敗しました (${msg})`,
+      () => loadHistory(channelName),
+    )
   }
 }
 
@@ -950,22 +1037,28 @@ function notifModePreviewDetail(mode, effectiveEnabled, context) {
   return `${context} の通知を受け取りません`
 }
 
-function applyNotifIndicatorClass(el, mode) {
-  el.classList.remove('notif-indicator--enabled', 'notif-indicator--disabled', 'notif-indicator--inherit')
-  el.classList.add(`notif-indicator--${mode}`)
+function applySidebarNotifIndicator(el, show, title) {
+  el.classList.remove('notif-indicator--enabled', 'notif-indicator--disabled', 'notif-indicator--inherit', 'notif-indicator--muted')
+  if (show) {
+    el.hidden = false
+    el.classList.add('notif-indicator--muted')
+    el.title = title || '通知: 無効'
+  } else {
+    el.hidden = true
+    el.removeAttribute('title')
+  }
 }
 
 function applyChannelNotifIndicator(el, channel) {
   const mode = getChannelNotificationMode(channel)
   const effective = isNotificationEnabled(channel.name)
-  applyNotifIndicatorClass(el, mode)
-  el.title = notifModeTitle(mode, effective)
+  applySidebarNotifIndicator(el, !effective, notifModeTitle(mode, effective))
 }
 
 function applyGroupNotifIndicator(el, groupId) {
   const mode = getGroupNotificationMode(groupId)
-  applyNotifIndicatorClass(el, mode)
-  el.title = notifModeTitle(mode, mode === 'enabled')
+  const effective = mode === 'enabled'
+  applySidebarNotifIndicator(el, !effective, notifModeTitle(mode, effective))
 }
 
 function refreshNotifIndicators() {
@@ -1868,6 +1961,8 @@ async function init() {
 
   const urlChannel = new URLSearchParams(location.search).get('channel')
 
+  showChannelListLoading()
+
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
   try {
@@ -1894,7 +1989,7 @@ async function init() {
   } catch (err) {
     clearTimeout(timeout)
     const msg = err.name === 'AbortError' ? 'タイムアウト' : err.message
-    channelList.innerHTML = `<div class="loading-text">読み込み失敗 (${msg})</div>`
+    showChannelListError(msg, init)
   }
 }
 

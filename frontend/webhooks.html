@@ -7,7 +7,7 @@
   <link rel="manifest" href="manifest.json?v=0.2.0">
   <link rel="icon" href="icon.svg?v=0.2.0" type="image/svg+xml">
   <link rel="apple-touch-icon" href="apple-touch-icon.png?v=0.2.0">
-  <link rel="stylesheet" href="style.css?v=0.2.9">
+  <link rel="stylesheet" href="style.css?v=0.2.12">
   <meta name="theme-color" content="#000000">
   <script>(function(){var t=localStorage.getItem('signaly-theme')||'system';document.documentElement.setAttribute('data-theme',t);})();</script>
 </head>
@@ -39,7 +39,7 @@
         <span class="channel-section-label">チャンネル</span>
       </div>
       <nav id="channel-list" aria-label="チャンネル一覧">
-        <div class="loading-text">読み込み中…</div>
+        <div class="loading-text"><span class="loading-spinner" aria-hidden="true"></span>読み込み中…</div>
       </nav>
     </aside>
 
@@ -106,6 +106,13 @@
       </div>
       <div class="create-channel-body settings-body">
         <section class="settings-section">
+          <h3 class="settings-section-title">Webhook</h3>
+          <p class="settings-doc-hint">
+            <a href="webhook-docs.html" class="settings-doc-link">POST 形式のマニュアル</a>
+          </p>
+        </section>
+
+        <section class="settings-section">
           <h3 class="settings-section-title">表示テーマ</h3>
           <div class="theme-segment" role="radiogroup" aria-label="表示テーマ">
             <button type="button" class="theme-segment-btn" data-theme="light" role="radio" aria-checked="false">ライト</button>
@@ -170,6 +177,6 @@
   <script src="changelog.js"></script>
   <script src="dialog.js"></script>
   <script src="settings.js?v=0.2.4"></script>
-  <script src="webhooks.js"></script>
+  <script src="webhooks.js?v=0.2.12"></script>
 </body>
 </html>

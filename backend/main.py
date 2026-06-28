@@ -14,7 +14,7 @@ from typing import AsyncIterator, Dict, List, Optional
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 from itsdangerous import BadData
@@ -32,6 +32,7 @@ from webhook import parse_webhook_payload
 
 BASE_DIR = Path(__file__).parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
+DOCS_DIR = BASE_DIR.parent / "docs"
 
 # channel_name → list of subscriber queues
 _subscribers: Dict[str, List[asyncio.Queue]] = {}
@@ -1019,6 +1020,14 @@ async def delete_api_key(key_id: str, email: str = Depends(auth.require_auth)):
     if not deleted:
         raise HTTPException(status_code=404, detail="API キーが見つかりません")
     return {"ok": True}
+
+
+@app.get("/docs/webhook.md")
+async def get_webhook_docs():
+    path = DOCS_DIR / "webhook.md"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="マニュアルが見つかりません")
+    return FileResponse(path, media_type="text/markdown; charset=utf-8")
 
 
 # フロントエンドの静的ファイルを最後にマウント
