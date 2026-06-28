@@ -1,8 +1,16 @@
 'use strict'
 
-const APP_VERSION = '1.1.4'
+const APP_VERSION = '1.1.5'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.1.5',
+    date: '2026-06-29',
+    changes: [
+      'アプリを開いているとき、チャンネルの通知設定（有効・無効）が正しく反映されるようになった',
+      '通知をタップすると、該当のメッセージが画面内でハイライト表示されるようになった',
+    ],
+  },
   {
     version: '1.1.4',
     date: '2026-06-29',
