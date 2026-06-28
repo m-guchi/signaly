@@ -243,7 +243,7 @@ function connectSSE(channelName) {
 // ── Desktop notification ──────────────────────────────────────────────────────
 
 function showDesktopNotification(entry) {
-  if (Notification.permission !== 'granted') return
+  if (!('Notification' in window) || Notification.permission !== 'granted') return
 
   const title = entry.title || `# ${entry.channel}`
   const body = entry.message
@@ -258,6 +258,11 @@ function showDesktopNotification(entry) {
 }
 
 function updateNotifBtnState() {
+  if (!('Notification' in window)) {
+    notifBtn.hidden = true
+    return
+  }
+  notifBtn.hidden = false
   if (Notification.permission === 'granted') {
     notifBtn.classList.add('granted')
     notifBtn.title = 'デスクトップ通知は有効です'
@@ -339,14 +344,10 @@ const loginOverlay = document.getElementById('login-overlay')
 async function checkAuth() {
   try {
     const res = await fetch('auth/me')
-    if (res.ok) {
-      addLogoutButton()
-      return true
-    }
+    if (res.ok) return true
   } catch {
     // ネットワーク失敗時はサイレントに無視
   }
-  loginOverlay.classList.add('visible')
   return false
 }
 
@@ -370,23 +371,29 @@ function addLogoutButton() {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 async function init() {
-  const authed = await checkAuth()
-  if (!authed) return
-
   updateNotifBtnState()
 
-  // Service Worker 登録
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {})
   }
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
   try {
-    const res = await fetch('api/channels')
+    const res = await fetch('api/channels', { signal: controller.signal })
+    clearTimeout(timeout)
+    if (res.status === 401) {
+      loginOverlay.classList.add('visible')
+      return
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const { channels } = await res.json()
+    addLogoutButton()
     renderChannels(channels)
-  } catch {
-    channelList.innerHTML = '<div class="loading-text">読み込み失敗</div>'
+  } catch (err) {
+    clearTimeout(timeout)
+    const msg = err.name === 'AbortError' ? 'タイムアウト' : err.message
+    channelList.innerHTML = `<div class="loading-text">読み込み失敗 (${msg})</div>`
   }
 }
 

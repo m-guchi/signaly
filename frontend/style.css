@@ -4,6 +4,10 @@
   padding: 0;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 :root {
   --bg: #0d0d0d;
   --sidebar-bg: #111;
