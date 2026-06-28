@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# テスト通知送信スクリプト
+# テスト通知送信スクリプト（Discord Webhook 形式）
 #
 # 使い方:
 #   bash scripts/test-notify.sh [channel_id] [mode]
 #
-#   channel_id : channels.json のキー（省略時: test-channel-id-1234）
+#   channel_id : チャンネル ID（省略時: test-channel-id-1234）
 #   mode       : embed | simple | warning | error（省略時: embed）
 #
 # 例:
@@ -24,27 +24,34 @@ MODE="${2:-embed}"
 
 TIMESTAMP=$(date "+%Y-%m-%d %H:%M:%S")
 
+# Discord embed color（10進数）: green=#57f287, yellow=#fbbf24, red=#ed4245
+COLOR_GREEN=5763719   # 0x57f287
+COLOR_YELLOW=16512804   # 0xfbbf24
+COLOR_RED=15548997    # 0xed4245
+
 # ── ペイロード生成 ─────────────────────────────────────────────────────────────
 
 case "$MODE" in
   embed)
     PAYLOAD=$(python3 - <<PY
-import json, datetime
-now = "$TIMESTAMP"
+import json
 print(json.dumps({
-    "title": "✅ [MyApp] CI 成功",
-    "color": "#57f287",
-    "fields": [
-        {"name": "App",        "value": "MyApp",                                        "inline": True},
-        {"name": "Type",       "value": "CI",                                            "inline": True},
-        {"name": "Repository", "value": "\`m-guchi/myapp\`",                            "inline": True},
-        {"name": "Branch",     "value": "main",                                          "inline": True},
-        {"name": "Commit",     "value": "\`abc1234\`",                                   "inline": True},
-        {"name": "Actor",      "value": "m-guchi",                                       "inline": True},
-        {"name": "Job",        "value": "backend, frontend",                             "inline": True},
-        {"name": "Event",      "value": "push",                                          "inline": True},
-        {"name": "Run",        "value": "[Workflow Run](https://github.com)", "inline": False},
-    ],
+    "embeds": [{
+        "title": "✅ [MyApp] CI 成功",
+        "color": $COLOR_GREEN,
+        "fields": [
+            {"name": "App",        "value": "MyApp",                                        "inline": True},
+            {"name": "Type",       "value": "CI",                                            "inline": True},
+            {"name": "Repository", "value": "\`m-guchi/myapp\`",                            "inline": True},
+            {"name": "Branch",     "value": "main",                                          "inline": True},
+            {"name": "Commit",     "value": "\`abc1234\`",                                   "inline": True},
+            {"name": "Actor",      "value": "m-guchi",                                       "inline": True},
+            {"name": "Job",        "value": "backend, frontend",                             "inline": True},
+            {"name": "Event",      "value": "push",                                          "inline": True},
+            {"name": "Run",        "value": "[Workflow Run](https://github.com)", "inline": False},
+        ],
+        "footer": {"text": "$TIMESTAMP"},
+    }],
 }))
 PY
 )
@@ -54,10 +61,11 @@ PY
     PAYLOAD=$(python3 -c "
 import json
 print(json.dumps({
-    'title': '⚠️ テスト警告',
-    'message': 'これはテスト警告です — $TIMESTAMP',
-    'level': 'warning',
-    'color': '#fbbf24',
+    'content': 'これはテスト警告です — $TIMESTAMP',
+    'embeds': [{
+        'title': '⚠️ テスト警告',
+        'color': $COLOR_YELLOW,
+    }],
 }))
 ")
     ;;
@@ -66,17 +74,19 @@ print(json.dumps({
     PAYLOAD=$(python3 -c "
 import json
 print(json.dumps({
-    'title': '❌ [MyApp] デプロイ 失敗',
-    'color': '#ed4245',
-    'fields': [
-        {'name': 'App',    'value': 'MyApp',      'inline': True},
-        {'name': 'Type',   'value': 'デプロイ',   'inline': True},
-        {'name': 'Status', 'value': '失敗',        'inline': True},
-        {'name': 'Branch', 'value': 'main',        'inline': True},
-        {'name': 'Commit', '\''value'\'': '\''abc1234'\'', 'inline': True},
-        {'name': 'Actor',  'value': 'm-guchi',     'inline': True},
-        {'name': 'Run',    'value': '[Workflow Run](https://github.com)', 'inline': False},
-    ],
+    'embeds': [{
+        'title': '❌ [MyApp] デプロイ 失敗',
+        'color': $COLOR_RED,
+        'fields': [
+            {'name': 'App',    'value': 'MyApp',      'inline': True},
+            {'name': 'Type',   'value': 'デプロイ',   'inline': True},
+            {'name': 'Status', 'value': '失敗',        'inline': True},
+            {'name': 'Branch', 'value': 'main',        'inline': True},
+            {'name': 'Commit', 'value': 'abc1234',     'inline': True},
+            {'name': 'Actor',  'value': 'm-guchi',     'inline': True},
+            {'name': 'Run',    'value': '[Workflow Run](https://github.com)', 'inline': False},
+        ],
+    }],
 }))
 ")
     ;;
@@ -85,9 +95,12 @@ print(json.dumps({
     PAYLOAD=$(python3 -c "
 import json
 print(json.dumps({
-    'title': '✅ シンプル通知',
-    'message': 'テスト送信 — $TIMESTAMP',
-    'level': 'info',
+    'content': 'テスト送信 — $TIMESTAMP',
+    'embeds': [{
+        'title': '✅ シンプル通知',
+        'description': 'Discord Webhook 形式の content + embed です',
+        'color': $COLOR_GREEN,
+    }],
 }))
 ")
     ;;

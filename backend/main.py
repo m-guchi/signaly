@@ -9,18 +9,20 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator, Dict, List, Optional, Set
+from typing import AsyncIterator, Dict, List, Optional
 
 import httpx
-from itsdangerous import URLSafeTimedSerializer, BadData
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
+from itsdangerous import BadData
 
-from database import Channel, Notification, PushSubscription, get_session, init_db
+import auth
+from database import ApiKey, Channel, Notification, PushSubscription, get_session, init_db
 from push import push_configured, send_push_notifications, validate_push_config
+from webhook import parse_webhook_payload
 
 BASE_DIR = Path(__file__).parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
@@ -28,50 +30,13 @@ FRONTEND_DIR = BASE_DIR.parent / "frontend"
 # channel_name → list of subscriber queues
 _subscribers: Dict[str, List[asyncio.Queue]] = {}
 
-# ── Auth config ───────────────────────────────────────────────────────────────
-
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "")
-APP_URL = os.getenv("APP_URL", "/")
-ALLOWED_EMAILS: Set[str] = {
-    e.strip() for e in os.getenv("ALLOWED_EMAILS", "").split(",") if e.strip()
-}
-SECRET_KEY = os.getenv("SECRET_KEY", "")
-
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
-
-SESSION_COOKIE = "signaly_session"
-STATE_COOKIE = "signaly_oauth_state"
-SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
-
-
-def _signer() -> URLSafeTimedSerializer:
-    key = SECRET_KEY or "dev-only-insecure-key"
-    return URLSafeTimedSerializer(key, salt="signaly-auth")
-
-
-def _get_session_email(request: Request) -> Optional[str]:
-    token = request.cookies.get(SESSION_COOKIE)
-    if not token:
-        return None
-    try:
-        return _signer().loads(token, max_age=SESSION_MAX_AGE)
-    except BadData:
-        return None
-
-
-async def require_auth(request: Request) -> str:
-    email = _get_session_email(request)
-    if not email:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    return email
 
 
 # ── DB helpers（threadpool で呼ぶ）────────────────────────────────────────────
 
 def _fetch_channels() -> Dict[str, str]:
-    """channel_id -> channel_name のマッピングを返す"""
+    """channel_id -> channel_name"""
     with get_session() as session:
         rows = session.query(Channel).all()
         return {row.id: row.name for row in rows}
@@ -97,6 +62,73 @@ def _create_channel(name: str) -> Dict[str, str]:
         )
         session.commit()
     return {"id": channel_id, "name": name}
+
+
+def _resolve_api_key_email(key: str) -> Optional[str]:
+    key_hash = auth.hash_secret(key)
+    now = datetime.now(timezone.utc)
+    with get_session() as session:
+        row = session.query(ApiKey).filter(ApiKey.key_hash == key_hash).first()
+        if not row:
+            return None
+        row.last_used_at = now
+        session.commit()
+        return row.email
+
+
+def _create_api_key(email: str, name: str) -> dict:
+    key = auth.generate_api_key()
+    now = datetime.now(timezone.utc)
+    key_id = str(uuid.uuid4())
+    with get_session() as session:
+        session.add(
+            ApiKey(
+                id=key_id,
+                email=email,
+                name=name,
+                key_hash=auth.hash_secret(key),
+                key_prefix=auth.api_key_prefix(key),
+                created_at=now,
+            )
+        )
+        session.commit()
+    return {
+        "id": key_id,
+        "name": name,
+        "key": key,
+        "key_prefix": auth.api_key_prefix(key),
+        "created_at": now.isoformat(),
+    }
+
+
+def _list_api_keys(email: str) -> List[dict]:
+    with get_session() as session:
+        rows = (
+            session.query(ApiKey)
+            .filter(ApiKey.email == email)
+            .order_by(ApiKey.created_at.desc())
+            .all()
+        )
+        return [
+            {
+                "id": r.id,
+                "name": r.name,
+                "key_prefix": r.key_prefix,
+                "created_at": r.created_at.isoformat(),
+                "last_used_at": r.last_used_at.isoformat() if r.last_used_at else None,
+            }
+            for r in rows
+        ]
+
+
+def _delete_api_key(email: str, key_id: str) -> bool:
+    with get_session() as session:
+        row = session.query(ApiKey).filter(ApiKey.id == key_id, ApiKey.email == email).first()
+        if not row:
+            return False
+        session.delete(row)
+        session.commit()
+        return True
 
 
 def _save_notification(entry: dict) -> None:
@@ -185,6 +217,7 @@ def _delete_push_subscription(endpoint: str) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    auth.set_api_key_resolver(_resolve_api_key_email)
     if push_configured():
         try:
             await asyncio.to_thread(validate_push_config)
@@ -199,7 +232,7 @@ app = FastAPI(title="Signaly", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -208,32 +241,32 @@ app.add_middleware(
 
 @app.get("/auth/login")
 async def auth_login():
-    if not GOOGLE_CLIENT_ID:
+    if not auth.GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=503, detail="Google OAuth が設定されていません")
 
     state = secrets.token_urlsafe(16)
-    signed_state = _signer().dumps(state)
+    signed_state = auth.sign_value(state)
 
     params = urllib.parse.urlencode({
-        "client_id": GOOGLE_CLIENT_ID,
-        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "client_id": auth.GOOGLE_CLIENT_ID,
+        "redirect_uri": auth.GOOGLE_REDIRECT_URI,
         "response_type": "code",
         "scope": "openid email",
         "state": state,
     })
     response = RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
-    response.set_cookie(STATE_COOKIE, signed_state, httponly=True, samesite="lax", max_age=600)
+    response.set_cookie(auth.STATE_COOKIE, signed_state, httponly=True, samesite="lax", max_age=600)
     return response
 
 
 @app.get("/auth/callback")
 async def auth_callback(request: Request, code: str, state: str):
     # state 検証（CSRF 対策）
-    signed_state = request.cookies.get(STATE_COOKIE)
+    signed_state = request.cookies.get(auth.STATE_COOKIE)
     if not signed_state:
         raise HTTPException(status_code=400, detail="不正なリクエストです（state cookie なし）")
     try:
-        expected_state = _signer().loads(signed_state, max_age=600)
+        expected_state = auth.load_signed_value(signed_state, max_age=600)
     except BadData:
         raise HTTPException(status_code=400, detail="不正なリクエストです（state 無効）")
     if expected_state != state:
@@ -245,9 +278,9 @@ async def auth_callback(request: Request, code: str, state: str):
             "https://oauth2.googleapis.com/token",
             data={
                 "code": code,
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "redirect_uri": GOOGLE_REDIRECT_URI,
+                "client_id": auth.GOOGLE_CLIENT_ID,
+                "client_secret": auth.GOOGLE_CLIENT_SECRET,
+                "redirect_uri": auth.GOOGLE_REDIRECT_URI,
                 "grant_type": "authorization_code",
             },
         )
@@ -268,25 +301,25 @@ async def auth_callback(request: Request, code: str, state: str):
         raise HTTPException(status_code=400, detail="ユーザー情報の取得に失敗しました")
 
     email: str = user_resp.json().get("email", "")
-    if not email or email not in ALLOWED_EMAILS:
+    if not email or email not in auth.ALLOWED_EMAILS:
         raise HTTPException(status_code=403, detail="このアカウントはアクセスが許可されていません")
 
-    session_token = _signer().dumps(email)
-    response = RedirectResponse(url=APP_URL, status_code=302)
+    session_token = auth.sign_value(email)
+    response = RedirectResponse(url=auth.APP_URL, status_code=302)
     response.set_cookie(
-        SESSION_COOKIE,
+        auth.SESSION_COOKIE,
         session_token,
-        max_age=SESSION_MAX_AGE,
+        max_age=auth.SESSION_MAX_AGE,
         httponly=True,
         samesite="lax",
     )
-    response.delete_cookie(STATE_COOKIE)
+    response.delete_cookie(auth.STATE_COOKIE)
     return response
 
 
 @app.get("/auth/me")
 async def auth_me(request: Request):
-    email = _get_session_email(request)
+    email = auth.get_session_email(request)
     if not email:
         raise HTTPException(status_code=401, detail="Unauthorized")
     return {"email": email}
@@ -294,35 +327,76 @@ async def auth_me(request: Request):
 
 @app.post("/auth/logout")
 async def auth_logout(response: Response):
-    response.delete_cookie(SESSION_COOKIE)
+    response.delete_cookie(auth.SESSION_COOKIE)
     return {"ok": True}
 
 
 # ── Webhook（認証不要：外部サービスから叩く）──────────────────────────────────
+# Discord Execute Webhook と同じ JSON 形式（content / embeds 等）を受け付ける。
+# Signaly レガシー形式（message / title / level 等）も引き続き利用可能。
 
-class WebhookPayload(BaseModel):
-    message: str = ""
-    title: str = ""
-    level: str = "info"  # info | warning | error
-    color: Optional[str] = None  # CSS hex e.g. #57f287
-    fields: Optional[List[dict]] = None  # [{name, value, inline}]
+
+def _channel_item(request: Request, channel_id: str, name: str) -> dict:
+    return {
+        "id": channel_id,
+        "name": name,
+        "webhook_url": _webhook_url(request, channel_id),
+    }
+
+
+async def _read_webhook_body(request: Request) -> dict:
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        raw = form.get("payload_json")
+        if not raw:
+            return {}
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="payload_json が不正な JSON です") from exc
+        if not isinstance(data, dict):
+            raise HTTPException(status_code=400, detail="payload_json は JSON オブジェクトである必要があります")
+        return data
+
+    try:
+        body = await request.body()
+    except Exception:
+        body = b""
+    if not body.strip():
+        return {}
+    try:
+        data = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="リクエストボディが不正な JSON です") from exc
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="リクエストボディは JSON オブジェクトである必要があります")
+    return data
 
 
 @app.post("/webhook/{channel_id}")
-async def receive_webhook(channel_id: str, payload: WebhookPayload):
+async def receive_webhook(channel_id: str, request: Request):
     channels = await asyncio.to_thread(_fetch_channels)
     if channel_id not in channels:
         raise HTTPException(status_code=404, detail="Channel not found")
+
+    raw = await _read_webhook_body(request)
+    try:
+        parsed = parse_webhook_payload(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     channel_name = channels[channel_id]
     entry = {
         "id": str(uuid.uuid4()),
         "channel": channel_name,
-        "title": payload.title,
-        "message": payload.message,
-        "level": payload.level,
-        "color": payload.color,
-        "fields": payload.fields,
+        "title": parsed["title"],
+        "message": parsed["message"],
+        "level": parsed["level"],
+        "color": parsed["color"],
+        "fields": parsed["fields"],
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -356,16 +430,9 @@ class CreateChannelRequest(BaseModel):
 
 
 @app.get("/api/channels")
-async def get_channels(request: Request, email: str = Depends(require_auth)):
+async def get_channels(request: Request, email: str = Depends(auth.require_auth)):
     channels = await asyncio.to_thread(_fetch_channels)
-    items = [
-        {
-            "id": cid,
-            "name": name,
-            "webhook_url": _webhook_url(request, cid),
-        }
-        for cid, name in channels.items()
-    ]
+    items = [_channel_item(request, cid, name) for cid, name in channels.items()]
     items.sort(key=lambda c: c["name"])
     return {"channels": items}
 
@@ -374,22 +441,18 @@ async def get_channels(request: Request, email: str = Depends(require_auth)):
 async def create_channel(
     request: Request,
     body: CreateChannelRequest,
-    email: str = Depends(require_auth),
+    email: str = Depends(auth.require_auth),
 ):
     try:
         created = await asyncio.to_thread(_create_channel, body.name)
     except ValueError:
         raise HTTPException(status_code=409, detail="同じ名前のチャンネルが既に存在します")
 
-    return {
-        "id": created["id"],
-        "name": created["name"],
-        "webhook_url": _webhook_url(request, created["id"]),
-    }
+    return _channel_item(request, created["id"], created["name"])
 
 
 @app.get("/api/history/{channel_name}")
-async def get_history(channel_name: str, limit: int = 200, email: str = Depends(require_auth)):
+async def get_history(channel_name: str, limit: int = 200, email: str = Depends(auth.require_auth)):
     channels = await asyncio.to_thread(_fetch_channels)
     if channel_name not in channels.values():
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -399,7 +462,7 @@ async def get_history(channel_name: str, limit: int = 200, email: str = Depends(
 
 
 @app.get("/api/stream/{channel_name}")
-async def stream_events(channel_name: str, request: Request, email: str = Depends(require_auth)):
+async def stream_events(channel_name: str, request: Request, email: str = Depends(auth.require_auth)):
     channels = await asyncio.to_thread(_fetch_channels)
     if channel_name not in channels.values():
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -455,14 +518,14 @@ class PushSubscribeBody(BaseModel):
 
 
 @app.get("/api/push/vapid-public-key")
-async def push_vapid_public_key(email: str = Depends(require_auth)):
+async def push_vapid_public_key(email: str = Depends(auth.require_auth)):
     if not push_configured():
         raise HTTPException(status_code=503, detail="Web Push が設定されていません")
     return {"publicKey": VAPID_PUBLIC_KEY}
 
 
 @app.post("/api/push/subscribe")
-async def push_subscribe(body: PushSubscribeBody, email: str = Depends(require_auth)):
+async def push_subscribe(body: PushSubscribeBody, email: str = Depends(auth.require_auth)):
     if not push_configured():
         raise HTTPException(status_code=503, detail="Web Push が設定されていません")
     await asyncio.to_thread(
@@ -476,8 +539,44 @@ async def push_subscribe(body: PushSubscribeBody, email: str = Depends(require_a
 
 
 @app.post("/api/push/unsubscribe")
-async def push_unsubscribe(body: PushSubscribeBody, email: str = Depends(require_auth)):
+async def push_unsubscribe(body: PushSubscribeBody, email: str = Depends(auth.require_auth)):
     await asyncio.to_thread(_delete_push_subscription, body.endpoint)
+    return {"ok": True}
+
+
+# ── API キー ──────────────────────────────────────────────────────────────────
+
+class CreateApiKeyRequest(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("名前を入力してください")
+        if len(v) > 100:
+            raise ValueError("名前は100文字以内にしてください")
+        return v
+
+
+@app.get("/api/keys")
+async def list_api_keys(email: str = Depends(auth.require_auth)):
+    keys = await asyncio.to_thread(_list_api_keys, email)
+    return {"keys": keys}
+
+
+@app.post("/api/keys")
+async def create_api_key(body: CreateApiKeyRequest, email: str = Depends(auth.require_auth)):
+    created = await asyncio.to_thread(_create_api_key, email, body.name)
+    return created
+
+
+@app.delete("/api/keys/{key_id}")
+async def delete_api_key(key_id: str, email: str = Depends(auth.require_auth)):
+    deleted = await asyncio.to_thread(_delete_api_key, email, key_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="API キーが見つかりません")
     return {"ok": True}
 
 

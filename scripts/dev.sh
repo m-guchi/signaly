@@ -133,6 +133,7 @@ load_env_local
 
 setsid "$ROOT_DIR/.venv/bin/uvicorn" main:app \
   --host 127.0.0.1 --port "$PORT" \
+  --reload \
   > "$UV_LOG" 2>&1 &
 echo $! > "$UV_PID_FILE"
 disown $!

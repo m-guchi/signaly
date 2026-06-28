@@ -93,13 +93,18 @@ function setStatus(state) {
 // ── Notification card ────────────────────────────────────────────────────────
 
 function renderFieldValue(raw) {
-  const escaped = raw
+  const escaped = String(raw)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
   return escaped
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
+    .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>')
+    .replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>')
+    .replace(/:rocket:/g, '🚀')
 }
 
 function createCard(entry) {
@@ -117,7 +122,7 @@ function createCard(entry) {
 
   const title = document.createElement('span')
   title.className = 'notif-title'
-  title.textContent = entry.title || entry.channel
+  title.innerHTML = renderFieldValue(entry.title || entry.channel)
 
   const time = document.createElement('span')
   time.className = 'notif-time'
@@ -127,6 +132,13 @@ function createCard(entry) {
   header.appendChild(title)
   header.appendChild(time)
   card.appendChild(header)
+
+  if (entry.message) {
+    const msg = document.createElement('div')
+    msg.className = 'notif-message'
+    msg.innerHTML = renderFieldValue(entry.message)
+    card.appendChild(msg)
+  }
 
   if (entry.fields && entry.fields.length > 0) {
     const fieldsEl = document.createElement('div')
@@ -148,11 +160,6 @@ function createCard(entry) {
       fieldsEl.appendChild(fieldEl)
     }
     card.appendChild(fieldsEl)
-  } else if (entry.message) {
-    const msg = document.createElement('p')
-    msg.className = 'notif-message'
-    msg.textContent = entry.message
-    card.appendChild(msg)
   }
 
   return card

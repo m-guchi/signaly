@@ -14,6 +14,13 @@ const webhookEmpty = document.getElementById('webhook-empty')
 const webhookUrlInput = document.getElementById('webhook-url-input')
 const webhookCopyBtn = document.getElementById('webhook-copy-btn')
 const webhookExampleCode = document.getElementById('webhook-example-code')
+const apiKeyForm = document.getElementById('api-key-form')
+const apiKeyName = document.getElementById('api-key-name')
+const apiKeyError = document.getElementById('api-key-error')
+const apiKeyCreated = document.getElementById('api-key-created')
+const apiKeyCreatedValue = document.getElementById('api-key-created-value')
+const apiKeyCreatedCopy = document.getElementById('api-key-created-copy')
+const apiKeyList = document.getElementById('api-key-list')
 const loginOverlay = document.getElementById('login-overlay')
 const sidebar = document.getElementById('sidebar')
 const sidebarToggle = document.getElementById('sidebar-toggle')
@@ -116,7 +123,7 @@ function selectChannel(name) {
   webhookUrlInput.value = channel.webhook_url
   webhookExampleCode.textContent = `curl -X POST "${channel.webhook_url}" \\
   -H "Content-Type: application/json" \\
-  -d '{"title":"デプロイ完了","message":"v1.2.3 を本番に反映しました","level":"info"}'`
+  -d '{"content":"デプロイ完了","embeds":[{"title":"v1.2.3","description":"本番に反映しました","color":5763719,"fields":[{"name":"Branch","value":"main","inline":true}]}]}'`
 
   webhookDetail.hidden = false
   webhookEmpty.hidden = true
@@ -132,6 +139,83 @@ webhookCopyBtn?.addEventListener('click', async () => {
     setTimeout(() => { webhookCopyBtn.textContent = 'コピー' }, 2000)
   } catch {
     webhookUrlInput.select()
+    document.execCommand('copy')
+  }
+})
+
+async function loadApiKeys() {
+  if (!apiKeyList) return
+  try {
+    const res = await fetch(apiUrl('api/keys'))
+    if (!res.ok) return
+    const { keys } = await res.json()
+    apiKeyList.innerHTML = ''
+    if (!keys.length) {
+      apiKeyList.innerHTML = '<li class="api-key-empty">API キーはまだありません</li>'
+      return
+    }
+    for (const key of keys) {
+      const li = document.createElement('li')
+      li.className = 'api-key-item'
+      li.innerHTML = `
+        <span class="api-key-item-name">${key.name}</span>
+        <span class="api-key-item-prefix">${key.key_prefix}…</span>
+        <button type="button" class="api-key-delete" data-id="${key.id}" title="削除">削除</button>
+      `
+      li.querySelector('.api-key-delete')?.addEventListener('click', async () => {
+        if (!confirm(`「${key.name}」を削除しますか？`)) return
+        await fetch(apiUrl(`api/keys/${key.id}`), { method: 'DELETE' })
+        loadApiKeys()
+      })
+      apiKeyList.appendChild(li)
+    }
+  } catch {
+    // サイレントに無視
+  }
+}
+
+apiKeyForm?.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const name = apiKeyName?.value.trim()
+  if (!name) return
+
+  apiKeyError.hidden = true
+  const submitBtn = apiKeyForm.querySelector('button[type="submit"]')
+  submitBtn.disabled = true
+
+  try {
+    const res = await fetch(apiUrl('api/keys'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      apiKeyError.textContent = data.detail || '作成に失敗しました'
+      apiKeyError.hidden = false
+      return
+    }
+    apiKeyName.value = ''
+    if (apiKeyCreated && apiKeyCreatedValue) {
+      apiKeyCreated.hidden = false
+      apiKeyCreatedValue.value = data.key
+    }
+    loadApiKeys()
+  } catch {
+    apiKeyError.textContent = 'ネットワークエラーが発生しました'
+    apiKeyError.hidden = false
+  } finally {
+    submitBtn.disabled = false
+  }
+})
+
+apiKeyCreatedCopy?.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(apiKeyCreatedValue.value)
+    apiKeyCreatedCopy.textContent = 'コピー済み'
+    setTimeout(() => { apiKeyCreatedCopy.textContent = 'コピー' }, 2000)
+  } catch {
+    apiKeyCreatedValue.select()
     document.execCommand('copy')
   }
 })
@@ -233,6 +317,7 @@ async function init() {
     channels = data.channels
     addLogoutButton()
     renderChannelList()
+    loadApiKeys()
   } catch (err) {
     clearTimeout(timeout)
     const msg = err.name === 'AbortError' ? 'タイムアウト' : err.message

@@ -10,7 +10,7 @@ _DB_PORT = os.environ.get("DB_PORT", "3306")
 _DB_NAME = os.environ["DB_NAME"]
 
 engine = create_engine(
-    f"mysql+pymysql://{_DB_USER}:{_DB_PASSWORD}@{_DB_HOST}:{_DB_PORT}/{_DB_NAME}",
+    f"mysql+pymysql://{_DB_USER}:{_DB_PASSWORD}@{_DB_HOST}:{_DB_PORT}/{_DB_NAME}?charset=utf8mb4",
     pool_pre_ping=True,
 )
 
@@ -24,8 +24,22 @@ class Channel(Base):
 
     id = Column(String(36), primary_key=True)
     name = Column(String(100), nullable=False, unique=True)
+    webhook_secret_hash = Column(String(64), nullable=True)
+    webhook_secret_enc = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+
+    id = Column(String(36), primary_key=True)
+    email = Column(String(255), nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    key_hash = Column(String(64), nullable=False, unique=True)
+    key_prefix = Column(String(16), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class Notification(Base):
@@ -59,14 +73,24 @@ def get_session() -> Session:
 
 
 def _migrate_add_columns() -> None:
-    new_columns = [
+    notification_columns = [
         "fields TEXT NULL",
         "color VARCHAR(20) NULL",
     ]
+    channel_columns = [
+        "webhook_secret_hash VARCHAR(64) NULL",
+        "webhook_secret_enc TEXT NULL",
+    ]
     with engine.connect() as conn:
-        for col_def in new_columns:
+        for col_def in notification_columns:
             try:
                 conn.execute(text(f"ALTER TABLE notifications ADD COLUMN {col_def}"))
+                conn.commit()
+            except Exception:
+                pass  # column already exists
+        for col_def in channel_columns:
+            try:
+                conn.execute(text(f"ALTER TABLE channels ADD COLUMN {col_def}"))
                 conn.commit()
             except Exception:
                 pass  # column already exists

@@ -62,9 +62,26 @@
             <h2 id="webhooks-example-title" class="webhooks-example-title">リクエスト例</h2>
             <pre class="webhooks-example-code"><code id="webhook-example-code"></code></pre>
             <p class="webhooks-example-hint">
-              <code>level</code> は <code>info</code> / <code>warning</code> / <code>error</code> が使えます。
-              <code>fields</code> で Discord 風の埋め込みフィールドも送れます。
+              <a href="https://discord.com/developers/docs/resources/webhook#execute-webhook" target="_blank" rel="noopener noreferrer">Discord Webhook</a> と同じ JSON 形式（<code>content</code> / <code>embeds</code> 等）で POST できます。
+              従来の <code>message</code> / <code>title</code> / <code>level</code> 形式も利用可能です。
             </p>
+          </section>
+          <section class="webhooks-example" aria-labelledby="api-keys-title">
+            <h2 id="api-keys-title" class="webhooks-example-title">API キー</h2>
+            <p class="webhooks-intro">スクリプトや CI から <code>/api/*</code> を呼ぶときに使います（Cookie の代わり）。</p>
+            <form id="api-key-form" class="api-key-form">
+              <input id="api-key-name" class="create-channel-input" type="text" maxlength="100" placeholder="例: GitHub Actions" required autocomplete="off">
+              <button type="submit" class="create-channel-copy">作成</button>
+            </form>
+            <p id="api-key-error" class="create-channel-error" hidden></p>
+            <div id="api-key-created" class="api-key-created" hidden>
+              <p class="create-channel-hint">このキーは一度だけ表示されます。安全な場所に保存してください。</p>
+              <div class="create-channel-webhook-row">
+                <input id="api-key-created-value" class="create-channel-input create-channel-webhook-input" type="text" readonly>
+                <button id="api-key-created-copy" type="button" class="create-channel-copy" title="コピー">コピー</button>
+              </div>
+            </div>
+            <ul id="api-key-list" class="api-key-list"></ul>
           </section>
         </div>
         <div id="webhook-empty" class="empty-state">左のチャンネルを選択してください</div>

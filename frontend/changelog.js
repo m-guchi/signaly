@@ -1,8 +1,15 @@
 'use strict'
 
-const APP_VERSION = '0.2.0'
+const APP_VERSION = '0.2.1'
 
 const APP_CHANGELOG = [
+  {
+    version: '0.2.1',
+    date: '2026-06-29',
+    changes: [
+      'Discord Webhook 形式（content / embeds）の受信に対応',
+    ],
+  },
   {
     version: '0.2.0',
     date: '2026-06-29',

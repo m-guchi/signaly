@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -46,12 +47,27 @@ def _load_vapid() -> Vapid02:
     return Vapid02(private_key=private_key)
 
 
+def _plain_text(text: str) -> str:
+    """プッシュ通知用に Markdown を除去する。"""
+    cleaned = text.replace(":rocket:", "🚀")
+    cleaned = re.sub(r"\*\*(.+?)\*\*", r"\1", cleaned)
+    cleaned = re.sub(r"__(.+?)__", r"\1", cleaned)
+    cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
+    cleaned = re.sub(r"\[([^\]]+)\]\((https?://[^)]+)\)", r"\1", cleaned)
+    return cleaned
+
+
 def _notification_body(entry: Dict[str, Any]) -> str:
-    if entry.get("message"):
-        return entry["message"]
     fields = entry.get("fields") or []
-    parts = [f"{f.get('name', '')}: {f.get('value', '')}" for f in fields[:3]]
-    return "\n".join(parts) if parts else ""
+    if fields:
+        parts = [
+            f"{_plain_text(str(f.get('name', '')))}: {_plain_text(str(f.get('value', '')))}"
+            for f in fields
+        ]
+        return "\n".join(parts)
+    if entry.get("message"):
+        return _plain_text(entry["message"])
+    return ""
 
 
 def _build_payload(entry: Dict[str, Any]) -> str:
