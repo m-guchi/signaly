@@ -5,7 +5,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from py_vapid import Vapid02
@@ -136,7 +136,7 @@ def _build_test_payload() -> str:
     )
 
 
-def _deliver_push(sub: Dict[str, str], payload: str, vapid: Vapid02) -> bool:
+def _deliver_push_result(sub: Dict[str, str], payload: str, vapid: Vapid02) -> Tuple[bool, Optional[int]]:
     subscription_info = {
         "endpoint": sub["endpoint"],
         "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},
@@ -148,7 +148,7 @@ def _deliver_push(sub: Dict[str, str], payload: str, vapid: Vapid02) -> bool:
             vapid_private_key=vapid,
             vapid_claims={"sub": VAPID_SUBJECT},
         )
-        return True
+        return True, None
     except WebPushException as exc:
         status = exc.response.status_code if exc.response is not None else None
         body = (exc.response.text or "")[:200] if exc.response is not None else ""
@@ -160,18 +160,24 @@ def _deliver_push(sub: Dict[str, str], payload: str, vapid: Vapid02) -> bool:
         )
         if status in (403, 404, 410):
             _delete_subscription(sub["id"])
-        return False
+        return False, status
     except Exception:
         logger.exception("Web Push error: %s", sub["endpoint"][:60])
-        return False
+        return False, None
 
 
-def send_test_push_to_user(email: str) -> Dict[str, Any]:
+def _deliver_push(sub: Dict[str, str], payload: str, vapid: Vapid02) -> bool:
+    return _deliver_push_result(sub, payload, vapid)[0]
+
+
+def send_test_push_to_user(email: str, endpoint: Optional[str] = None) -> Dict[str, Any]:
     """ログイン中ユーザーの登録端末へテスト Push を送る。"""
     if not push_configured():
         return {"sent": 0, "failed": 0, "error": "not_configured"}
 
     subs = _fetch_subscriptions_for_email(email)
+    if endpoint:
+        subs = [s for s in subs if s["endpoint"] == endpoint]
     if not subs:
         return {"sent": 0, "failed": 0, "error": "no_subscription"}
 
@@ -179,12 +185,23 @@ def send_test_push_to_user(email: str) -> Dict[str, Any]:
     vapid = _load_vapid()
     sent = 0
     failed = 0
+    removed = 0
+    last_status: Optional[int] = None
     for sub in subs:
-        if _deliver_push(sub, payload, vapid):
+        ok, status = _deliver_push_result(sub, payload, vapid)
+        if ok:
             sent += 1
         else:
             failed += 1
-    return {"sent": sent, "failed": failed}
+            last_status = status
+            if status in (403, 404, 410):
+                removed += 1
+    result: Dict[str, Any] = {"sent": sent, "failed": failed}
+    if removed:
+        result["removed"] = removed
+    if last_status is not None:
+        result["last_status"] = last_status
+    return result
 
 
 def send_push_notifications(entry: Dict[str, Any]) -> None:

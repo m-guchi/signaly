@@ -1530,6 +1530,10 @@ html, body {
   color: var(--accent);
 }
 
+.notif-test-result--warn {
+  color: var(--warning);
+}
+
 .notif-test-result--error {
   color: var(--error);
 }

@@ -217,10 +217,14 @@ const SignalySettings = {
       try {
         const result = await this.notifications.sendTest?.()
         if (result?.ok) {
-          resultEl.textContent = result.mode === 'push'
-            ? 'テスト通知を送信しました。端末に届くか確認してください。'
-            : 'テスト通知を表示しました。見えていれば OK です。'
-          resultEl.className = 'notif-test-result notif-test-result--ok'
+          resultEl.textContent = result.message || (
+            result.mode === 'push'
+              ? 'テスト通知を送信しました。端末に届くか確認してください。'
+              : 'テスト通知を表示しました。見えていれば OK です。'
+          )
+          resultEl.className = result.mode === 'local' && result.message
+            ? 'notif-test-result notif-test-result--warn'
+            : 'notif-test-result notif-test-result--ok'
         } else {
           resultEl.textContent = result?.message || 'テストに失敗しました'
           resultEl.className = 'notif-test-result notif-test-result--error'

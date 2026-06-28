@@ -1375,40 +1375,119 @@ function showDesktopNotification(entry) {
   }
 }
 
+const TEST_NOTIFICATION = {
+  title: 'Signaly テスト通知',
+  body: '通知の受信確認用です。このまま届いていれば OK です。',
+  tag: 'signaly-test',
+}
+
+function testNotificationIcon() {
+  return typeof APP_VERSION !== 'undefined'
+    ? `icon-192.png?v=${APP_VERSION}`
+    : 'icon-192.png'
+}
+
+async function showTestNotificationLocally() {
+  const options = {
+    body: TEST_NOTIFICATION.body,
+    icon: testNotificationIcon(),
+    tag: TEST_NOTIFICATION.tag,
+  }
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready
+      if (reg.showNotification) {
+        await reg.showNotification(TEST_NOTIFICATION.title, options)
+        return true
+      }
+    }
+  } catch {
+    // Service Worker 経由が失敗したら Notification API へ
+  }
+  try {
+    new Notification(TEST_NOTIFICATION.title, options)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function sendServerTestPush() {
+  let endpoint = null
+  if (pushSupported()) {
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.getSubscription()
+      endpoint = sub?.endpoint ?? null
+    } catch {
+      endpoint = null
+    }
+  }
+  const res = await fetch(apiUrl('api/push/test'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(endpoint ? { endpoint } : {}),
+  })
+  if (res.ok) {
+    return { ok: true }
+  }
+  const err = await res.json().catch(() => ({}))
+  let detail = err.detail || 'テスト通知の送信に失敗しました'
+  if (typeof detail !== 'string') {
+    detail = 'テスト通知の送信に失敗しました'
+  }
+  if (res.status === 404) {
+    detail += '。「有効」または「再登録」を試してください。'
+  }
+  if (res.status === 502 && detail.includes('再登録')) {
+    pushSubscribed = false
+    SignalySettings.updateSettingsBtnState()
+  }
+  return { ok: false, message: detail }
+}
+
 async function sendTestNotification() {
   if (!('Notification' in window) || Notification.permission !== 'granted') {
     return { ok: false, message: '端末の通知が許可されていません。' }
   }
 
-  if (pushSupported() && pushSubscribed) {
+  const localOk = await showTestNotificationLocally()
+  const shouldTryServer = pushSupported() && pushSubscribed
+  let serverResult = null
+  if (shouldTryServer) {
     try {
-      const res = await fetch(apiUrl('api/push/test'), { method: 'POST' })
-      if (res.ok) {
-        return { ok: true, mode: 'push' }
+      serverResult = await sendServerTestPush()
+      if (!serverResult.ok) {
+        SignalySettings.renderNotifSettings?.()
       }
-      const err = await res.json().catch(() => ({}))
-      const detail = err.detail || 'テスト通知の送信に失敗しました'
-      if (res.status === 404) {
-        return { ok: false, message: `${detail}「有効にする」または「再登録する」を試してください。` }
-      }
-      return { ok: false, message: detail }
     } catch {
-      return { ok: false, message: 'ネットワークエラー' }
+      serverResult = { ok: false, message: 'ネットワークエラー' }
     }
   }
 
-  try {
-    const icon = typeof APP_VERSION !== 'undefined'
-      ? `icon-192.png?v=${APP_VERSION}`
-      : 'icon-192.png'
-    new Notification('Signaly テスト通知', {
-      body: '通知の受信確認用です。このまま届いていれば OK です。',
-      icon,
-      tag: 'signaly-test',
-    })
+  if (localOk && serverResult?.ok) {
+    return {
+      ok: true,
+      mode: 'both',
+      message: '通知を表示しました。バックグラウンドでも届くか、アプリを閉じて確認してください。',
+    }
+  }
+  if (localOk) {
+    if (shouldTryServer && serverResult && !serverResult.ok) {
+      return {
+        ok: true,
+        mode: 'local',
+        message: `通知は表示されました。サーバーからの Push は失敗したため、${serverResult.message}`,
+      }
+    }
     return { ok: true, mode: 'local' }
-  } catch {
-    return { ok: false, message: '通知の表示に失敗しました' }
+  }
+  if (serverResult?.ok) {
+    return { ok: true, mode: 'push' }
+  }
+  return {
+    ok: false,
+    message: serverResult?.message || '通知の表示に失敗しました',
   }
 }
 
