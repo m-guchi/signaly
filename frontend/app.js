@@ -395,6 +395,15 @@ function createChannelRow(channel) {
   label.className = 'channel-item-label'
   label.textContent = channel.name
   btn.appendChild(label)
+
+  if (!reorderMode) {
+    const notifIndicator = document.createElement('span')
+    notifIndicator.className = 'notif-indicator'
+    notifIndicator.setAttribute('aria-hidden', 'true')
+    btn.appendChild(notifIndicator)
+    applyChannelNotifIndicator(notifIndicator, channel)
+  }
+
   if (!reorderMode) {
     btn.addEventListener('click', () => selectChannel(channel.name))
   }
@@ -437,12 +446,23 @@ function createGroupSection(group) {
   label.className = 'channel-group-label'
   label.textContent = group.name
 
+  const labelWrap = document.createElement('div')
+  labelWrap.className = 'channel-group-label-wrap'
+
   if (reorderMode) {
     section.classList.add('channel-group--reorderable')
     section.draggable = true
     header.appendChild(createReorderHandle())
-    header.appendChild(label)
+    labelWrap.appendChild(label)
+    header.appendChild(labelWrap)
   } else {
+    const notifIndicator = document.createElement('span')
+    notifIndicator.className = 'notif-indicator'
+    notifIndicator.setAttribute('aria-hidden', 'true')
+    labelWrap.appendChild(notifIndicator)
+    applyGroupNotifIndicator(notifIndicator, group.id)
+    labelWrap.appendChild(label)
+
     const settingsBtn = document.createElement('button')
     settingsBtn.type = 'button'
     settingsBtn.className = 'group-settings-btn'
@@ -454,7 +474,7 @@ function createGroupSection(group) {
       openGroupSettings(group.id)
     })
 
-    header.appendChild(label)
+    header.appendChild(labelWrap)
     header.appendChild(createGroupActions(
       settingsBtn,
       createAddBtn('チャンネルを追加', () => openCreateChannelDialog(group.id)),
@@ -888,10 +908,152 @@ async function loadNotificationSettings() {
     const res = await fetch(apiUrl('api/notification-settings'))
     if (!res.ok) return false
     notificationSettings = await res.json()
+    refreshNotifIndicators()
     return true
   } catch {
     return false
   }
+}
+
+function getChannelNotificationMode(channel) {
+  if (!channel?.id) return 'enabled'
+  const pref = notificationSettings.channels[channel.id]
+  if (pref === true) return 'enabled'
+  if (pref === false) return 'disabled'
+  if (channel.group_id) return 'inherit'
+  return 'enabled'
+}
+
+function getGroupNotificationMode(groupId) {
+  return notificationSettings.groups[groupId] === false ? 'disabled' : 'enabled'
+}
+
+function notifModeTitle(mode, effectiveEnabled) {
+  if (mode === 'inherit') {
+    return effectiveEnabled
+      ? 'グループに従う（通知: 有効）'
+      : 'グループに従う（通知: 無効）'
+  }
+  return mode === 'enabled' ? '通知: 有効' : '通知: 無効'
+}
+
+function notifModePreviewTitle(mode) {
+  if (mode === 'inherit') return 'グループに従う'
+  return mode === 'enabled' ? '有効' : '無効'
+}
+
+function notifModePreviewDetail(mode, effectiveEnabled, context) {
+  if (mode === 'inherit') {
+    return `グループ設定を継承 — 結果: ${effectiveEnabled ? '通知あり' : '通知なし'}`
+  }
+  if (mode === 'enabled') return `${context} の通知を受け取ります`
+  return `${context} の通知を受け取りません`
+}
+
+function applyNotifIndicatorClass(el, mode) {
+  el.classList.remove('notif-indicator--enabled', 'notif-indicator--disabled', 'notif-indicator--inherit')
+  el.classList.add(`notif-indicator--${mode}`)
+}
+
+function applyChannelNotifIndicator(el, channel) {
+  const mode = getChannelNotificationMode(channel)
+  const effective = isNotificationEnabled(channel.name)
+  applyNotifIndicatorClass(el, mode)
+  el.title = notifModeTitle(mode, effective)
+}
+
+function applyGroupNotifIndicator(el, groupId) {
+  const mode = getGroupNotificationMode(groupId)
+  applyNotifIndicatorClass(el, mode)
+  el.title = notifModeTitle(mode, mode === 'enabled')
+}
+
+function refreshNotifIndicators() {
+  for (const row of document.querySelectorAll('.channel-row')) {
+    const channel = channelsByName[row.dataset.channel]
+    const indicator = row.querySelector('.notif-indicator')
+    if (channel && indicator) applyChannelNotifIndicator(indicator, channel)
+  }
+  for (const section of document.querySelectorAll('.channel-group[data-group-id]')) {
+    const indicator = section.querySelector('.channel-group-label-wrap .notif-indicator')
+    if (indicator) applyGroupNotifIndicator(indicator, section.dataset.groupId)
+  }
+}
+
+function setNotifSegmentValue(segmentEl, value) {
+  if (!segmentEl) return
+  for (const btn of segmentEl.querySelectorAll('.notif-mode-segment-btn')) {
+    const active = btn.dataset.value === value
+    btn.classList.toggle('active', active)
+    btn.setAttribute('aria-pressed', String(active))
+  }
+}
+
+function getNotifSegmentValue(segmentEl) {
+  return segmentEl?.querySelector('.notif-mode-segment-btn.active')?.dataset.value ?? null
+}
+
+function setNotifSegmentDisabled(segmentEl, disabled) {
+  if (!segmentEl) return
+  for (const btn of segmentEl.querySelectorAll('.notif-mode-segment-btn')) {
+    btn.disabled = disabled
+  }
+}
+
+function renderNotifPreview(container, mode, effectiveEnabled, context) {
+  if (!container) return
+  container.innerHTML = `
+    <div class="notif-mode-preview-card notif-mode-preview-card--${mode}">
+      <span class="notif-mode-preview-icon" aria-hidden="true"></span>
+      <div class="notif-mode-preview-text">
+        <strong>${notifModePreviewTitle(mode)}</strong>
+        <span>${notifModePreviewDetail(mode, effectiveEnabled, context)}</span>
+      </div>
+    </div>
+  `
+}
+
+function channelNotificationSegmentValue(channel) {
+  const mode = getChannelNotificationMode(channel)
+  if (mode === 'inherit') return 'inherit'
+  return mode === 'enabled' ? 'true' : 'false'
+}
+
+function groupNotificationSegmentValue(groupId) {
+  return getGroupNotificationMode(groupId) === 'disabled' ? 'false' : 'true'
+}
+
+function updateChannelNotifSettingsUI(channel) {
+  const segment = document.getElementById('channel-settings-notif-segment')
+  const preview = document.getElementById('channel-settings-notif-preview')
+  const inheritBtn = document.getElementById('channel-notif-inherit-btn')
+  const hasGroup = Boolean(channel?.group_id)
+
+  if (inheritBtn) {
+    inheritBtn.hidden = !hasGroup
+  }
+  if (segment) {
+    segment.classList.toggle('notif-mode-segment--3', hasGroup)
+  }
+
+  const value = channelNotificationSegmentValue(channel)
+  setNotifSegmentValue(segment, value)
+
+  const mode = value === 'inherit' ? 'inherit' : value === 'true' ? 'enabled' : 'disabled'
+  const effective = isNotificationEnabled(channel.name)
+  renderNotifPreview(preview, mode, effective, channel.name)
+}
+
+function updateGroupNotifSettingsUI(groupId) {
+  const segment = document.getElementById('group-settings-notif-segment')
+  const preview = document.getElementById('group-settings-notif-preview')
+  const group = groupsById[groupId]
+  const value = groupNotificationSegmentValue(groupId)
+
+  setNotifSegmentValue(segment, value)
+
+  const mode = value === 'true' ? 'enabled' : 'disabled'
+  renderNotifPreview(preview, mode, mode === 'enabled', group?.name || 'グループ')
 }
 
 function isNotificationEnabled(channelName) {
@@ -911,35 +1073,24 @@ function isNotificationEnabled(channelName) {
   return true
 }
 
-function channelNotificationEffectiveHint(channelName) {
-  const channel = channelsByName[channelName]
-  if (!channel?.id) return ''
+function setupNotifSegment(segmentEl, onSelect) {
+  if (!segmentEl || segmentEl.dataset.notifBound) return
+  segmentEl.dataset.notifBound = '1'
 
-  const channelPref = notificationSettings.channels[channel.id]
-  if (channelPref !== undefined && channelPref !== null) {
-    return channelPref ? '現在: 有効（チャンネル設定）' : '現在: 無効（チャンネル設定）'
-  }
+  segmentEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.notif-mode-segment-btn')
+    if (!btn || btn.disabled || btn.hidden) return
+    if (btn.classList.contains('active')) return
 
-  const enabled = isNotificationEnabled(channelName)
-  if (channel.group_id) {
-    return enabled
-      ? '現在: 有効（グループ設定）'
-      : '現在: 無効（グループ設定）'
-  }
+    const prev = getNotifSegmentValue(segmentEl)
+    setNotifSegmentValue(segmentEl, btn.dataset.value)
+    setNotifSegmentDisabled(segmentEl, true)
 
-  return enabled ? '現在: 有効（デフォルト）' : '現在: 無効'
-}
+    const ok = await onSelect(btn.dataset.value)
+    if (!ok) setNotifSegmentValue(segmentEl, prev)
 
-function channelNotificationSelectValue(channelId) {
-  const pref = notificationSettings.channels[channelId]
-  if (pref === true) return 'true'
-  if (pref === false) return 'false'
-  return 'inherit'
-}
-
-function groupNotificationSelectValue(groupId) {
-  const pref = notificationSettings.groups[groupId]
-  return pref === false ? 'false' : 'true'
+    setNotifSegmentDisabled(segmentEl, false)
+  })
 }
 
 // ── Desktop / Push notification ─────────────────────────────────────────────
@@ -1269,7 +1420,7 @@ const groupSettingsRename = document.getElementById('group-settings-rename')
 const groupSettingsRenameBtn = document.getElementById('group-settings-rename-btn')
 const groupSettingsError = document.getElementById('group-settings-error')
 const groupSettingsDelete = document.getElementById('group-settings-delete')
-const groupSettingsNotif = document.getElementById('group-settings-notif')
+const groupSettingsNotifSegment = document.getElementById('group-settings-notif-segment')
 const groupDeleteDialog = document.getElementById('group-delete-dialog')
 const groupDeleteName = document.getElementById('group-delete-name')
 const groupDeleteError = document.getElementById('group-delete-error')
@@ -1286,7 +1437,7 @@ function resetGroupSettingsDialog() {
   groupSettingsError.textContent = ''
   groupSettingsRenameBtn.disabled = false
   groupSettingsDelete.disabled = false
-  if (groupSettingsNotif) groupSettingsNotif.disabled = false
+  setNotifSegmentDisabled(groupSettingsNotifSegment, false)
 }
 
 function openGroupSettings(groupId) {
@@ -1296,9 +1447,7 @@ function openGroupSettings(groupId) {
   groupSettingsId = groupId
   groupSettingsOriginalName = group.name
   groupSettingsRename.value = group.name
-  if (groupSettingsNotif) {
-    groupSettingsNotif.value = groupNotificationSelectValue(groupId)
-  }
+  updateGroupNotifSettingsUI(groupId)
   groupSettingsError.hidden = true
   closeSidebar()
   SignalyDialog.open(groupSettingsDialog, { focusEl: groupSettingsRename })
@@ -1373,11 +1522,11 @@ groupSettingsRenameBtn?.addEventListener('click', async () => {
   }
 })
 
-groupSettingsNotif?.addEventListener('change', async () => {
-  if (!groupSettingsId || !groupSettingsNotif) return
+groupSettingsNotifSegment && setupNotifSegment(groupSettingsNotifSegment, async (selected) => {
+  if (!groupSettingsId) return false
 
-  const enabled = groupSettingsNotif.value === 'true'
-  groupSettingsNotif.disabled = true
+  const enabled = selected === 'true'
+  groupSettingsError.hidden = true
 
   try {
     const res = await fetch(apiUrl(`api/groups/${groupSettingsId}/notification-setting`), {
@@ -1389,8 +1538,7 @@ groupSettingsNotif?.addEventListener('change', async () => {
       const data = await res.json().catch(() => ({}))
       groupSettingsError.textContent = parseApiError(data, '通知設定の保存に失敗しました')
       groupSettingsError.hidden = false
-      groupSettingsNotif.value = groupNotificationSelectValue(groupSettingsId)
-      return
+      return false
     }
 
     if (enabled) {
@@ -1398,13 +1546,13 @@ groupSettingsNotif?.addEventListener('change', async () => {
     } else {
       notificationSettings.groups[groupSettingsId] = false
     }
-    groupSettingsError.hidden = true
+    updateGroupNotifSettingsUI(groupSettingsId)
+    refreshNotifIndicators()
+    return true
   } catch {
     groupSettingsError.textContent = 'ネットワークエラーが発生しました'
     groupSettingsError.hidden = false
-    groupSettingsNotif.value = groupNotificationSelectValue(groupSettingsId)
-  } finally {
-    groupSettingsNotif.disabled = false
+    return false
   }
 })
 
@@ -1458,8 +1606,7 @@ const channelSettingsCopy = document.getElementById('channel-settings-copy')
 const channelSettingsRevealWebhook = document.getElementById('channel-settings-reveal-webhook')
 const channelSettingsWebhookSection = document.getElementById('channel-settings-webhook-section')
 const channelSettingsDelete = document.getElementById('channel-settings-delete')
-const channelSettingsNotif = document.getElementById('channel-settings-notif')
-const channelSettingsNotifHint = document.getElementById('channel-settings-notif-hint')
+const channelSettingsNotifSegment = document.getElementById('channel-settings-notif-segment')
 const channelDeleteDialog = document.getElementById('channel-delete-dialog')
 const channelDeleteName = document.getElementById('channel-delete-name')
 const channelDeleteError = document.getElementById('channel-delete-error')
@@ -1477,7 +1624,7 @@ function resetChannelSettingsDialog() {
   hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy)
   channelSettingsRenameBtn.disabled = false
   channelSettingsDelete.disabled = false
-  if (channelSettingsNotif) channelSettingsNotif.disabled = false
+  setNotifSegmentDisabled(channelSettingsNotifSegment, false)
 }
 
 function openChannelSettings(channelName) {
@@ -1487,12 +1634,7 @@ function openChannelSettings(channelName) {
   channelSettingsId = channel.id
   channelSettingsOriginalName = channelName
   channelSettingsRename.value = channelName
-  if (channelSettingsNotif) {
-    channelSettingsNotif.value = channelNotificationSelectValue(channel.id)
-  }
-  if (channelSettingsNotifHint) {
-    channelSettingsNotifHint.textContent = channelNotificationEffectiveHint(channelName)
-  }
+  updateChannelNotifSettingsUI(channel)
   channelSettingsWebhook.value = channel.webhook_url || ''
   channelSettingsError.hidden = true
   hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy)
@@ -1514,12 +1656,11 @@ channelSettingsDialog?.addEventListener('click', (e) => {
   }
 })
 
-channelSettingsNotif?.addEventListener('change', async () => {
-  if (!channelSettingsId || !channelSettingsNotif) return
+channelSettingsNotifSegment && setupNotifSegment(channelSettingsNotifSegment, async (selected) => {
+  if (!channelSettingsId || !channelSettingsOriginalName) return false
 
-  const selected = channelSettingsNotif.value
   const enabled = selected === 'inherit' ? null : selected === 'true'
-  channelSettingsNotif.disabled = true
+  channelSettingsError.hidden = true
 
   try {
     const res = await fetch(apiUrl(`api/channels/${channelSettingsId}/notification-setting`), {
@@ -1531,8 +1672,7 @@ channelSettingsNotif?.addEventListener('change', async () => {
       const data = await res.json().catch(() => ({}))
       channelSettingsError.textContent = parseApiError(data, '通知設定の保存に失敗しました')
       channelSettingsError.hidden = false
-      channelSettingsNotif.value = channelNotificationSelectValue(channelSettingsId)
-      return
+      return false
     }
 
     if (enabled === null) {
@@ -1540,16 +1680,15 @@ channelSettingsNotif?.addEventListener('change', async () => {
     } else {
       notificationSettings.channels[channelSettingsId] = enabled
     }
-    if (channelSettingsNotifHint && channelSettingsOriginalName) {
-      channelSettingsNotifHint.textContent = channelNotificationEffectiveHint(channelSettingsOriginalName)
-    }
-    channelSettingsError.hidden = true
+
+    const channel = channelsByName[channelSettingsOriginalName]
+    if (channel) updateChannelNotifSettingsUI(channel)
+    refreshNotifIndicators()
+    return true
   } catch {
     channelSettingsError.textContent = 'ネットワークエラーが発生しました'
     channelSettingsError.hidden = false
-    channelSettingsNotif.value = channelNotificationSelectValue(channelSettingsId)
-  } finally {
-    channelSettingsNotif.disabled = false
+    return false
   }
 })
 

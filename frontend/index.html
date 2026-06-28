@@ -108,11 +108,18 @@
         </div>
         <p id="group-settings-error" class="create-channel-error" hidden></p>
 
-        <label class="create-channel-label" for="group-settings-notif">通知</label>
-        <select id="group-settings-notif" class="create-channel-input notif-setting-select">
-          <option value="true">有効</option>
-          <option value="false">無効</option>
-        </select>
+        <label class="create-channel-label">通知</label>
+        <div id="group-settings-notif-segment" class="notif-mode-segment" role="group" aria-label="通知設定">
+          <button type="button" class="notif-mode-segment-btn" data-value="true" aria-pressed="false">
+            <span class="notif-mode-segment-icon notif-mode-segment-icon--on" aria-hidden="true"></span>
+            有効
+          </button>
+          <button type="button" class="notif-mode-segment-btn" data-value="false" aria-pressed="false">
+            <span class="notif-mode-segment-icon notif-mode-segment-icon--off" aria-hidden="true"></span>
+            無効
+          </button>
+        </div>
+        <div id="group-settings-notif-preview" class="notif-mode-preview" aria-live="polite"></div>
         <p class="create-channel-hint">グループ内のチャンネルすべてに適用されます。チャンネル個別の設定がある場合はそちらが優先されます。</p>
 
         <div class="channel-settings-actions">
@@ -188,13 +195,22 @@
         </div>
         <p id="channel-settings-error" class="create-channel-error" hidden></p>
 
-        <label class="create-channel-label" for="channel-settings-notif">通知</label>
-        <select id="channel-settings-notif" class="create-channel-input notif-setting-select">
-          <option value="inherit">グループに従う</option>
-          <option value="true">有効</option>
-          <option value="false">無効</option>
-        </select>
-        <p id="channel-settings-notif-hint" class="create-channel-hint"></p>
+        <label class="create-channel-label">通知</label>
+        <div id="channel-settings-notif-segment" class="notif-mode-segment notif-mode-segment--3" role="group" aria-label="通知設定">
+          <button type="button" class="notif-mode-segment-btn" data-value="inherit" id="channel-notif-inherit-btn" aria-pressed="false">
+            <span class="notif-mode-segment-icon notif-mode-segment-icon--inherit" aria-hidden="true"></span>
+            グループ
+          </button>
+          <button type="button" class="notif-mode-segment-btn" data-value="true" aria-pressed="false">
+            <span class="notif-mode-segment-icon notif-mode-segment-icon--on" aria-hidden="true"></span>
+            有効
+          </button>
+          <button type="button" class="notif-mode-segment-btn" data-value="false" aria-pressed="false">
+            <span class="notif-mode-segment-icon notif-mode-segment-icon--off" aria-hidden="true"></span>
+            無効
+          </button>
+        </div>
+        <div id="channel-settings-notif-preview" class="notif-mode-preview" aria-live="polite"></div>
 
         <label class="create-channel-label">Webhook URL</label>
         <button id="channel-settings-reveal-webhook" type="button" class="create-channel-copy webhook-reveal-btn">URL を表示</button>
