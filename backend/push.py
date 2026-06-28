@@ -6,6 +6,7 @@ import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from py_vapid import Vapid02
@@ -136,7 +137,30 @@ def _build_test_payload() -> str:
     )
 
 
-def _deliver_push_result(sub: Dict[str, str], payload: str, vapid: Vapid02) -> Tuple[bool, Optional[int]]:
+def _vapid_claims_for_endpoint(endpoint: str) -> Dict[str, str]:
+    parsed = urlparse(endpoint)
+    return {
+        "sub": VAPID_SUBJECT,
+        "aud": f"{parsed.scheme}://{parsed.netloc}",
+    }
+
+
+def _push_error_hint(exc: WebPushException) -> Optional[str]:
+    if exc.response is None:
+        return None
+    try:
+        data = exc.response.json()
+        if isinstance(data, dict) and data.get("reason"):
+            return str(data["reason"])
+    except Exception:
+        pass
+    text = (exc.response.text or "").strip()
+    return text[:120] if text else None
+
+
+def _deliver_push_result(
+    sub: Dict[str, str], payload: str, vapid: Vapid02
+) -> Tuple[bool, Optional[int], Optional[str]]:
     subscription_info = {
         "endpoint": sub["endpoint"],
         "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},
@@ -146,11 +170,13 @@ def _deliver_push_result(sub: Dict[str, str], payload: str, vapid: Vapid02) -> T
             subscription_info=subscription_info,
             data=payload,
             vapid_private_key=vapid,
-            vapid_claims={"sub": VAPID_SUBJECT},
+            vapid_claims=_vapid_claims_for_endpoint(sub["endpoint"]),
+            ttl=60,
         )
-        return True, None
+        return True, None, None
     except WebPushException as exc:
         status = exc.response.status_code if exc.response is not None else None
+        hint = _push_error_hint(exc)
         body = (exc.response.text or "")[:200] if exc.response is not None else ""
         logger.warning(
             "Web Push failed (%s): %s — %s",
@@ -160,10 +186,10 @@ def _deliver_push_result(sub: Dict[str, str], payload: str, vapid: Vapid02) -> T
         )
         if status in (403, 404, 410):
             _delete_subscription(sub["id"])
-        return False, status
+        return False, status, hint
     except Exception:
         logger.exception("Web Push error: %s", sub["endpoint"][:60])
-        return False, None
+        return False, None, None
 
 
 def _deliver_push(sub: Dict[str, str], payload: str, vapid: Vapid02) -> bool:
@@ -187,13 +213,15 @@ def send_test_push_to_user(email: str, endpoint: Optional[str] = None) -> Dict[s
     failed = 0
     removed = 0
     last_status: Optional[int] = None
+    last_error: Optional[str] = None
     for sub in subs:
-        ok, status = _deliver_push_result(sub, payload, vapid)
+        ok, status, hint = _deliver_push_result(sub, payload, vapid)
         if ok:
             sent += 1
         else:
             failed += 1
             last_status = status
+            last_error = hint
             if status in (403, 404, 410):
                 removed += 1
     result: Dict[str, Any] = {"sent": sent, "failed": failed}
@@ -201,6 +229,8 @@ def send_test_push_to_user(email: str, endpoint: Optional[str] = None) -> Dict[s
         result["removed"] = removed
     if last_status is not None:
         result["last_status"] = last_status
+    if last_error:
+        result["last_error"] = last_error
     return result
 
 

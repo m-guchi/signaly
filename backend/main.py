@@ -997,6 +997,16 @@ async def push_subscribe(body: PushSubscribeBody, email: str = Depends(auth.requ
 
 class PushTestBody(BaseModel):
     endpoint: Optional[str] = None
+    keys: Optional[dict] = None
+
+    @field_validator("keys")
+    @classmethod
+    def validate_keys(cls, v: Optional[dict]) -> Optional[dict]:
+        if v is None:
+            return v
+        if not v.get("p256dh") or not v.get("auth"):
+            raise ValueError("keys.p256dh と keys.auth が必要です")
+        return v
 
 
 @app.post("/api/push/test")
@@ -1006,14 +1016,31 @@ async def push_test(
 ):
     if not push_configured():
         raise HTTPException(status_code=503, detail="Web Push が設定されていません")
+    if (
+        body.endpoint
+        and body.keys
+        and body.keys.get("p256dh")
+        and body.keys.get("auth")
+    ):
+        await asyncio.to_thread(
+            _upsert_push_subscription,
+            email,
+            body.endpoint,
+            body.keys["p256dh"],
+            body.keys["auth"],
+        )
     result = await asyncio.to_thread(send_test_push_to_user, email, body.endpoint)
     if result.get("error") == "no_subscription":
         raise HTTPException(status_code=404, detail="Push 登録がありません")
     if result.get("sent", 0) == 0:
-        detail = "テスト通知の送信に失敗しました"
+        detail = "バックグラウンド通知の送信に失敗しました"
         if result.get("last_status"):
             detail += f"（HTTP {result['last_status']}）"
+        if result.get("last_error"):
+            detail += f"：{result['last_error']}"
         if result.get("removed"):
+            detail += "。「再登録」を試してください"
+        elif result.get("last_error") in ("BadJwtToken", "BadAuthorizationHeader"):
             detail += "。「再登録」を試してください"
         raise HTTPException(status_code=502, detail=detail)
     return {"ok": True, **result}

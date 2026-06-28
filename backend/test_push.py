@@ -54,9 +54,9 @@ class TestSendPushNotifications(unittest.TestCase):
         self.assertEqual(webpush.call_count, 2)
         self.assertEqual(len(captured), 2)
         self.assertIsNot(captured[0], captured[1])
-        expected = {"sub": VAPID_SUBJECT}
-        self.assertEqual(captured[0], expected)
-        self.assertEqual(captured[1], expected)
+        self.assertEqual(captured[0]["sub"], VAPID_SUBJECT)
+        self.assertEqual(captured[0]["aud"], "https://fcm.googleapis.com")
+        self.assertEqual(captured[1]["aud"], "https://web.push.apple.com")
 
     @patch("push.resolve_notification_enabled")
     @patch("push.webpush")
