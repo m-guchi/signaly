@@ -1,7 +1,7 @@
 # GitHub Actions デプロイ用（1Password 参照）
-# Vault: apps — signaly / DB / Server / githubaction-sshkey / discord_webhook
+# Vault: apps — signaly / DB / Server / githubaction-sshkey
 
-DISCORD_CI_WEBHOOK_URL=op://apps/discord_webhook/CI_URL
+SIGNALY_WEBHOOK_URL=op://apps/signaly/ci-webhook-url
 TARGET_DIR=op://apps/signaly/target-dir
 DB_NAME=op://apps/signaly/db-name
 DB_USER=op://apps/DB/db-user

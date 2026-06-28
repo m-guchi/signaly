@@ -210,14 +210,14 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           OP_ENV_FILE: .github/deploy.env.tpl
 
-      - name: Discord に通知
+      - name: Signaly に通知
         env:
-          DISCORD_WEBHOOK_URL: ${{ env.DISCORD_CI_WEBHOOK_URL }}
+          SIGNALY_WEBHOOK_URL: ${{ env.SIGNALY_WEBHOOK_URL }}
           NOTIFY_APP:    Signaly
           NOTIFY_KIND:   デプロイ
           NOTIFY_STATUS: ${{ steps.status.outputs.result }}
           NOTIFY_JOB:    deploy
-        run: bash .github/scripts/discord-notify.sh
+        run: bash .github/scripts/signaly-notify.sh
 
   notify-release:
     runs-on: ubuntu-latest
@@ -235,11 +235,11 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           OP_ENV_FILE: .github/deploy.env.tpl
 
-      - name: Discord に通知
+      - name: Signaly に通知
         env:
-          DISCORD_WEBHOOK_URL: ${{ env.DISCORD_CI_WEBHOOK_URL }}
+          SIGNALY_WEBHOOK_URL: ${{ env.SIGNALY_WEBHOOK_URL }}
           NOTIFY_APP:    Signaly
           NOTIFY_KIND:   リリース
           NOTIFY_STATUS: ${{ needs.release.result }}
           NOTIFY_JOB:    release
-        run: bash .github/scripts/discord-notify.sh
+        run: bash .github/scripts/signaly-notify.sh

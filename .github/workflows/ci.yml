@@ -80,12 +80,12 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           OP_ENV_FILE: .github/ci.env.tpl
 
-      - name: Notify Discord
+      - name: Notify Signaly
         if: steps.status.outputs.should_notify == 'true'
         env:
-          DISCORD_WEBHOOK_URL: ${{ env.DISCORD_CI_WEBHOOK_URL }}
+          SIGNALY_WEBHOOK_URL: ${{ env.SIGNALY_WEBHOOK_URL }}
           NOTIFY_APP: Signaly
           NOTIFY_KIND: CI
           NOTIFY_STATUS: ${{ steps.status.outputs.result }}
           NOTIFY_JOB: ${{ steps.status.outputs.jobs }}
-        run: bash .github/scripts/discord-notify.sh
+        run: bash .github/scripts/signaly-notify.sh
