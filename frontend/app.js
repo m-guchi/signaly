@@ -14,6 +14,10 @@ function isPushDeepLink() {
   return new URLSearchParams(location.search).get('src') === 'push'
 }
 
+function notificationIdFromQuery() {
+  return new URLSearchParams(location.search).get('id')
+}
+
 function resolveStartupChannel() {
   const params = new URLSearchParams(location.search)
   const urlChannel = params.get('channel')
@@ -24,9 +28,10 @@ function resolveStartupChannel() {
 }
 
 function clearPushDeepLinkMarker() {
-  if (!isPushDeepLink()) return
+  if (!isPushDeepLink() && !notificationIdFromQuery()) return
   const url = new URL(location.href)
   url.searchParams.delete('src')
+  url.searchParams.delete('id')
   history.replaceState(null, '', url)
 }
 
@@ -50,7 +55,10 @@ let pollTimer = null
 let unreadPollTimer = null
 let pushSubscribed = false
 let pendingNewCount = 0
+let pendingHighlightId = null
 let notificationSettings = { channels: {}, groups: {} }
+
+const HIGHLIGHT_FADE_MS = 8000
 
 const LAST_READ_KEY = 'signaly-last-read'
 const LAST_CHANNEL_KEY = 'signaly-last-channel'
@@ -526,6 +534,62 @@ function scheduleNewCardFade(card) {
   setTimeout(() => {
     if (card.isConnected) clearNewCardHighlight(card)
   }, NEW_CARD_FADE_MS)
+}
+
+function highlightNotificationCard(id, { retries = 5 } = {}) {
+  if (!id || !feed) return false
+
+  const card = feed.querySelector(`.notif-card[data-id="${CSS.escape(id)}"]`)
+  if (!card) {
+    if (retries > 0) {
+      setTimeout(() => highlightNotificationCard(id, { retries: retries - 1 }), 200)
+    }
+    return false
+  }
+
+  feed.querySelectorAll('.notif-card--highlight').forEach((c) => {
+    c.classList.remove('notif-card--highlight')
+  })
+
+  card.classList.add('notif-card--highlight')
+  card.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  clearPushDeepLinkMarker()
+
+  setTimeout(() => {
+    if (card.isConnected) card.classList.remove('notif-card--highlight')
+  }, HIGHLIGHT_FADE_MS)
+
+  return true
+}
+
+function consumeNotificationHighlightId() {
+  const id = pendingHighlightId || notificationIdFromQuery()
+  pendingHighlightId = null
+  return id
+}
+
+async function handleNotificationNavigation({ channel, id, url } = {}) {
+  const params = url ? new URL(url, location.origin).searchParams : null
+  const targetChannel = channel || params?.get('channel')
+  const targetId = id || params?.get('id')
+  if (!targetChannel) return
+
+  if (targetId) pendingHighlightId = targetId
+
+  if (activeChannel === targetChannel) {
+    const highlightId = consumeNotificationHighlightId()
+    if (highlightId) highlightNotificationCard(highlightId)
+    else clearPushDeepLinkMarker()
+    return
+  }
+
+  const nextUrl = new URL(location.href)
+  nextUrl.searchParams.set('channel', targetChannel)
+  if (targetId) nextUrl.searchParams.set('id', targetId)
+  nextUrl.searchParams.set('src', 'push')
+  history.replaceState(null, '', nextUrl)
+
+  await selectChannel(targetChannel)
 }
 
 function updateNewNotifBanner() {
@@ -1030,8 +1094,13 @@ async function loadHistory(channelName, sinceLastRead, pendingUnread = 0) {
       prevDateKey = dateKey
     }
     markChannelRead(channelName, newestTs || Date.now())
-    // 最新が上になるよう先頭にスクロール
-    feed.scrollTop = 0
+    const highlightId = consumeNotificationHighlightId()
+    if (highlightId) {
+      requestAnimationFrame(() => highlightNotificationCard(highlightId))
+    } else {
+      // 最新が上になるよう先頭にスクロール
+      feed.scrollTop = 0
+    }
     updateStickyFeedDate()
   } catch (err) {
     if (activeChannel !== channelName) return
@@ -1185,7 +1254,7 @@ function connectSSE(channelName) {
     }
 
     // デスクトップ通知
-    showDesktopNotification(entry)
+    void showDesktopNotification(entry)
   }
 
   es.onerror = () => {
@@ -1482,22 +1551,59 @@ async function unsubscribePush() {
 }
 
 function showDesktopNotification(entry) {
-  if (pushSubscribed) return
   if (!isNotificationEnabled(entry.channel)) return
   if (!('Notification' in window) || Notification.permission !== 'granted') return
+  // バックグラウンドでは Web Push（Service Worker）に任せる
+  if (document.hidden) return
 
   const title = entry.title || `# ${entry.channel}`
   const body = entry.message
   const icon = typeof APP_VERSION !== 'undefined'
     ? `icon-192.png?v=${APP_VERSION}`
     : 'icon-192.png'
-
-  const n = new Notification(title, { body, icon, tag: entry.id })
-  n.onclick = () => {
-    window.focus()
-    if (activeChannel !== entry.channel) selectChannel(entry.channel)
-    n.close()
+  const options = {
+    body,
+    icon,
+    tag: entry.id,
+    data: {
+      url: entry.channel ? `./?channel=${encodeURIComponent(entry.channel)}&src=push` : './',
+      channel: entry.channel || '',
+      id: entry.id || '',
+    },
   }
+
+  const onClick = () => {
+    window.focus()
+    pendingHighlightId = entry.id
+    if (activeChannel !== entry.channel) {
+      void selectChannel(entry.channel)
+    } else {
+      highlightNotificationCard(entry.id)
+    }
+  }
+
+  void (async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready
+        if (reg.showNotification) {
+          await reg.showNotification(title, options)
+          return
+        }
+      }
+    } catch {
+      // Service Worker 経由が失敗したら Notification API へ
+    }
+    try {
+      const n = new Notification(title, options)
+      n.onclick = () => {
+        onClick()
+        n.close()
+      }
+    } catch {
+      // 非対応・拒否など
+    }
+  })()
 }
 
 const TEST_NOTIFICATION = {
@@ -2328,6 +2434,24 @@ function setupServiceWorkerAutoUpdate(registration) {
 
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return
+
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    const msg = event.data
+    if (!msg) return
+    if (msg.type === 'notification-click') {
+      void handleNotificationNavigation(msg)
+      return
+    }
+    if (msg.type === 'push-notification') {
+      const data = msg.data || {}
+      showDesktopNotification({
+        id: data.id,
+        channel: data.channel,
+        title: data.title,
+        message: data.body,
+      })
+    }
+  })
 
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!swUpdatePending || swRefreshing) return

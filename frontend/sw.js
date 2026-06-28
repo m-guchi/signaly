@@ -61,14 +61,25 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     (async () => {
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-      if (!clients.length) await incrementAppBadgeCount()
+      if (clients.length) {
+        for (const client of clients) {
+          client.postMessage({ type: 'push-notification', data })
+        }
+        return
+      }
+
+      await incrementAppBadgeCount()
 
       await self.registration.showNotification(data.title || 'Signaly', {
         body: data.body || '',
-        icon: 'icon-192.png?v=1.1.4',
-        badge: 'icon-192.png?v=1.1.4',
+        icon: 'icon-192.png?v=1.1.5',
+        badge: 'icon-192.png?v=1.1.5',
         tag: data.id || undefined,
-        data: { url: data.url || './', channel: data.channel || '' },
+        data: {
+          url: data.url || './',
+          channel: data.channel || '',
+          id: data.id || '',
+        },
       })
     })()
   )
@@ -76,15 +87,28 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const targetUrl = event.notification.data?.url || './'
+  const data = event.notification.data || {}
+  const targetUrl = data.url || './'
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    (async () => {
+      const clients = await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      })
       for (const client of clients) {
-        if ('focus' in client) return client.focus()
+        if (!('focus' in client)) continue
+        await client.focus()
+        client.postMessage({
+          type: 'notification-click',
+          url: targetUrl,
+          channel: data.channel || '',
+          id: data.id || '',
+        })
+        return
       }
-      return self.clients.openWindow(targetUrl)
-    })
+      await self.clients.openWindow(targetUrl)
+    })()
   )
 })
 
