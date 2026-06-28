@@ -43,7 +43,7 @@ function updatePageUrl(channelName) {
 let activeChannel = null
 let channelsByName = {}
 let eventSource = null
-let unread = {}  // channel_name -> count
+let unread = loadUnread()  // channel_name -> count
 let lastReadAt = loadLastReadAt()  // channel_name -> timestamp (ms)
 const seenIds = new Set()
 let pollTimer = null
@@ -54,6 +54,7 @@ let notificationSettings = { channels: {}, groups: {} }
 
 const LAST_READ_KEY = 'signaly-last-read'
 const LAST_CHANNEL_KEY = 'signaly-last-channel'
+const UNREAD_KEY = 'signaly-unread'
 const CHANNEL_TREE_KEY = 'signaly-channel-tree'
 const UNREAD_POLL_MS = 15000
 const NEW_CARD_FADE_MS = 60000
@@ -278,7 +279,14 @@ feedStateRetry?.addEventListener('click', () => {
 function loadLastReadAt() {
   try {
     const raw = localStorage.getItem(LAST_READ_KEY)
-    return raw ? JSON.parse(raw) : {}
+    if (!raw) return {}
+    const data = JSON.parse(raw)
+    const out = {}
+    for (const [k, v] of Object.entries(data)) {
+      const n = Number(v)
+      if (!Number.isNaN(n)) out[k] = n
+    }
+    return out
   } catch {
     return {}
   }
@@ -290,6 +298,49 @@ function saveLastReadAt() {
   } catch {
     // quota exceeded 等は無視
   }
+}
+
+function loadUnread() {
+  try {
+    const raw = localStorage.getItem(UNREAD_KEY)
+    if (!raw) return {}
+    const data = JSON.parse(raw)
+    const out = {}
+    for (const [k, v] of Object.entries(data)) {
+      const n = Number(v)
+      if (n > 0) out[k] = n
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+function saveUnread() {
+  try {
+    const data = {}
+    for (const [k, v] of Object.entries(unread)) {
+      const n = Number(v)
+      if (n > 0) data[k] = n
+    }
+    if (Object.keys(data).length) {
+      localStorage.setItem(UNREAD_KEY, JSON.stringify(data))
+    } else {
+      localStorage.removeItem(UNREAD_KEY)
+    }
+  } catch {
+    // quota exceeded 等は無視
+  }
+}
+
+function setChannelUnread(channelName, count) {
+  const n = Math.max(0, Number(count) || 0)
+  if (n > 0) {
+    unread[channelName] = n
+  } else {
+    delete unread[channelName]
+  }
+  saveUnread()
 }
 
 function loadLastChannel() {
@@ -346,7 +397,7 @@ function showAuthenticatedShell() {
 function markChannelRead(channelName, timestampMs = Date.now()) {
   lastReadAt[channelName] = timestampMs
   saveLastReadAt()
-  unread[channelName] = 0
+  setChannelUnread(channelName, 0)
   updateBadge(channelName)
   updateDocumentTitle()
 }
@@ -915,7 +966,7 @@ async function selectChannel(name) {
   activeChannel = name
   saveLastChannel(name)
   updatePageUrl(name)
-  unread[name] = 0
+  setChannelUnread(name, 0)
   pendingNewCount = 0
   if (newNotifBanner) newNotifBanner.hidden = true
 
@@ -1022,18 +1073,38 @@ async function pollUnreadChannels() {
   await Promise.all(names.map(async (name) => {
     if (name === activeChannel) return
     try {
-      const res = await fetch(apiUrl(`api/history/${name}?limit=50`))
+      const res = await fetch(apiUrl(`api/history/${name}?limit=200`))
       if (!res.ok) return
       const { logs } = await res.json()
 
       if (lastReadAt[name] === undefined) {
-        if (logs.length) {
-          const newest = Math.max(...logs.map(e => parseTimestamp(e.timestamp)))
-          lastReadAt[name] = newest
+        const timestamps = logs
+          .map(e => parseTimestamp(e.timestamp))
+          .filter(t => !Number.isNaN(t))
+        const storedUnread = unread[name] || 0
+
+        if (storedUnread > 0 && timestamps.length) {
+          const sorted = [...timestamps].sort((a, b) => b - a)
+          const baselineIdx = Math.min(storedUnread, sorted.length)
+          const baseline = baselineIdx < sorted.length
+            ? sorted[baselineIdx]
+            : sorted[sorted.length - 1] - 1
+          lastReadAt[name] = baseline
+          saveLastReadAt()
+          const count = logs.filter(e => parseTimestamp(e.timestamp) > baseline).length
+          if (unread[name] !== count) {
+            setChannelUnread(name, count)
+            changed = true
+          }
+          return
+        }
+
+        if (timestamps.length) {
+          lastReadAt[name] = Math.max(...timestamps)
           saveLastReadAt()
         }
         if (unread[name] !== 0) {
-          unread[name] = 0
+          setChannelUnread(name, 0)
           changed = true
         }
         return
@@ -1042,7 +1113,7 @@ async function pollUnreadChannels() {
       const since = lastReadAt[name]
       const count = logs.filter(e => parseTimestamp(e.timestamp) > since).length
       if (unread[name] !== count) {
-        unread[name] = count
+        setChannelUnread(name, count)
         changed = true
       }
     } catch {
@@ -1108,7 +1179,7 @@ function connectSSE(channelName) {
       prependCard(entry, { isNew: true })
       markChannelRead(entry.channel, parseTimestamp(entry.timestamp))
     } else {
-      unread[entry.channel] = (unread[entry.channel] || 0) + 1
+      setChannelUnread(entry.channel, (unread[entry.channel] || 0) + 1)
       updateBadge(entry.channel)
       updateDocumentTitle()
     }
@@ -2110,8 +2181,9 @@ channelSettingsRenameBtn?.addEventListener('click', async () => {
 
     const oldName = channelSettingsOriginalName
     if (unread[oldName]) {
-      unread[newName] = (unread[newName] || 0) + unread[oldName]
+      setChannelUnread(newName, (unread[newName] || 0) + unread[oldName])
       delete unread[oldName]
+      saveUnread()
     }
     if (lastReadAt[oldName]) {
       lastReadAt[newName] = Math.max(lastReadAt[newName] || 0, lastReadAt[oldName])
@@ -2167,6 +2239,7 @@ channelDeleteConfirm?.addEventListener('click', async () => {
 
     const deletedName = channelSettingsOriginalName
     delete unread[deletedName]
+    saveUnread()
     delete lastReadAt[deletedName]
     saveLastReadAt()
     closeChannelDeleteDialog()
@@ -2273,6 +2346,8 @@ async function init() {
   if (cachedTree) {
     showAuthenticatedShell()
     renderChannelTree(cachedTree, startupChannel)
+    updateAllBadges()
+    startUnreadPolling()
   } else {
     showChannelListLoading()
     showFeedLoading()
