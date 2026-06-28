@@ -1,8 +1,16 @@
 'use strict'
 
-const APP_VERSION = '1.1.5'
+const APP_VERSION = '1.1.6'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.1.6',
+    date: '2026-06-29',
+    changes: [
+      'Push 通知を無効にした状態が、アプリ再起動後も保持されるようになった',
+      'アプリを閉じているときやバックグラウンドで Push 通知が届かない不具合を修正',
+    ],
+  },
   {
     version: '1.1.5',
     date: '2026-06-29',

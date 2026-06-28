@@ -61,19 +61,22 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     (async () => {
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-      if (clients.length) {
-        for (const client of clients) {
+      const visibleClients = clients.filter((c) => c.visibilityState === 'visible')
+
+      // 前面表示中だけページへ渡す（チャンネル設定を反映）。背景・終了時は SW が表示する。
+      if (visibleClients.length > 0) {
+        for (const client of visibleClients) {
           client.postMessage({ type: 'push-notification', data })
         }
         return
       }
 
-      await incrementAppBadgeCount()
+      if (!clients.length) await incrementAppBadgeCount()
 
       await self.registration.showNotification(data.title || 'Signaly', {
         body: data.body || '',
-        icon: 'icon-192.png?v=1.1.5',
-        badge: 'icon-192.png?v=1.1.5',
+        icon: 'icon-192.png?v=1.1.6',
+        badge: 'icon-192.png?v=1.1.6',
         tag: data.id || undefined,
         data: {
           url: data.url || './',
