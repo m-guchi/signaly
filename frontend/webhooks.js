@@ -311,6 +311,7 @@ async function init() {
     const res = await fetch(apiUrl('api/channels'), { signal: controller.signal })
     clearTimeout(timeout)
     if (res.status === 401) {
+      channelList.innerHTML = ''
       loginOverlay.classList.add('visible')
       return
     }

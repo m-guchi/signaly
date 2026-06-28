@@ -3,7 +3,7 @@
   "name": "Signaly",
   "short_name": "Signaly",
   "description": "プライベート通知ハブ",
-  "start_url": ".",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",

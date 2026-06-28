@@ -33,6 +33,8 @@ const SignalyDialog = {
     const sync = () => {
       if (!dialog.classList.contains('open')) return
       const vv = window.visualViewport
+      // 自動ズーム（scale !== 1）ではレイアウトを追従させない
+      if (vv.scale !== 1) return
       dialog.style.top = `${vv.offsetTop}px`
       dialog.style.left = `${vv.offsetLeft}px`
       dialog.style.right = 'auto'

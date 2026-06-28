@@ -1000,6 +1000,12 @@ html, body {
     min-height: 0;
     -webkit-overflow-scrolling: touch;
   }
+
+  /* iOS Safari: 16px 未満の input フォーカス時に画面が自動拡大されるのを防ぐ */
+  .create-channel-input,
+  .create-channel-input.create-channel-webhook-input {
+    font-size: 16px;
+  }
 }
 
 @media (min-width: 768px) {

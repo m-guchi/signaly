@@ -3,10 +3,21 @@
 // ── State ────────────────────────────────────────────────────────────────────
 
 function apiUrl(path) {
-  const base = location.pathname.endsWith('/')
-    ? location.pathname
-    : `${location.pathname}/`
-  return base + path.replace(/^\//, '')
+  return '/' + path.replace(/^\//, '')
+}
+
+function channelFromQuery() {
+  return new URLSearchParams(location.search).get('channel')
+}
+
+function updatePageUrl(channelName) {
+  const url = new URL(location.href)
+  if (channelName) {
+    url.searchParams.set('channel', channelName)
+  } else {
+    url.searchParams.delete('channel')
+  }
+  history.replaceState(null, '', url)
 }
 
 let activeChannel = null
@@ -822,6 +833,8 @@ async function selectChannel(name) {
   // SSE を先に張り、履歴読み込み中の通知取りこぼしを防ぐ
   connectSSE(name)
   await loadHistory(name)
+
+  updatePageUrl(name)
 
   closeSidebar()
 }
@@ -2006,7 +2019,7 @@ async function registerServiceWorker() {
   })
 
   try {
-    const registration = await navigator.serviceWorker.register('./sw.js', {
+    const registration = await navigator.serviceWorker.register('/sw.js', {
       updateViaCache: 'none',
     })
     setupServiceWorkerAutoUpdate(registration)
@@ -2024,7 +2037,7 @@ async function init() {
 
   await registerServiceWorker()
 
-  const urlChannel = new URLSearchParams(location.search).get('channel')
+  const urlChannel = channelFromQuery()
 
   showChannelListLoading()
 
@@ -2034,6 +2047,7 @@ async function init() {
     const res = await fetch(apiUrl('api/channels'), { signal: controller.signal })
     clearTimeout(timeout)
     if (res.status === 401) {
+      channelList.innerHTML = ''
       loginOverlay.classList.add('visible')
       return
     }
