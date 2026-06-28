@@ -5,9 +5,16 @@ set -euo pipefail
 
 TARGET_DIR="${TARGET_DIR:-/apps/signaly}"
 
+install_sudoers() {
+  local dest="/etc/sudoers.d/signaly-deploy"
+  sed "s|@DEPLOY_USER@|${USER}|g; s|@TARGET_DIR@|${TARGET_DIR}|g" \
+    "${TARGET_DIR}/deploy/signaly.sudoers.example" | sudo tee "$dest" > /dev/null
+  sudo chmod 440 "$dest"
+  sudo visudo -cf "$dest"
+}
+
 install_systemd_service() {
-  sed "s|{{TARGET_DIR}}|${TARGET_DIR}|g" \
-    "${TARGET_DIR}/deploy/signaly.service.template" | sudo tee /etc/systemd/system/signaly.service > /dev/null
+  sudo "${TARGET_DIR}/deploy/restart-service.sh" "${TARGET_DIR}"
 }
 
 echo "==> ディレクトリ作成 (${TARGET_DIR})"
@@ -36,11 +43,11 @@ echo "  !! DATABASE_URL 環境変数が設定されていることを確認し�
 mysql -u root -e "CREATE DATABASE IF NOT EXISTS app_signaly CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>/dev/null || \
   echo "  !! DB 作成をスキップ（手動で実行してください）: CREATE DATABASE app_signaly CHARACTER SET utf8mb4;"
 
+echo "==> sudoers を登録（GitHub Actions デプロイ用 passwordless sudo）"
+install_sudoers
+
 echo "==> systemd サービスを登録 (port 8002)"
 install_systemd_service
-sudo systemctl daemon-reload
-sudo systemctl enable signaly
-sudo systemctl restart signaly
 sudo systemctl status signaly --no-pager
 
 echo "==> 完了"

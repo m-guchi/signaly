@@ -166,6 +166,17 @@ GitHub Secrets には `OP_SERVICE_ACCOUNT_TOKEN` のみ登録します。
 op run --env-file=.env.tpl -- bash deploy/setup.sh
 ```
 
+`setup.sh` は venv 作成・**sudoers 登録**（GitHub Actions 用 passwordless sudo）・systemd 登録まで行います。
+
+sudoers だけ手動で入れる場合（`TARGET_DIR` とデプロイユーザーを置換）:
+
+```bash
+sed "s|@DEPLOY_USER@|$(whoami)|g; s|@TARGET_DIR@|/apps/signaly|g" \
+  deploy/signaly.sudoers.example | sudo tee /etc/sudoers.d/signaly-deploy > /dev/null
+sudo chmod 440 /etc/sudoers.d/signaly-deploy
+sudo visudo -cf /etc/sudoers.d/signaly-deploy
+```
+
 Apache には `deploy/apache.conf` を VirtualHost に追記してください（本番ポート **8002**）。
 
 ### ポート

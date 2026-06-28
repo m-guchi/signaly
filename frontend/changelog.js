@@ -1,8 +1,15 @@
 'use strict'
 
-const APP_VERSION = '1.0.3'
+const APP_VERSION = '1.0.4'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.0.4',
+    date: '2026-06-29',
+    changes: [
+      'GitHub Actions デプロイ時の sudo パスワード要求を解消（restart-service.sh + sudoers）',
+    ],
+  },
   {
     version: '1.0.3',
     date: '2026-06-29',
