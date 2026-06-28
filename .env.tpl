@@ -3,7 +3,6 @@ DB_USER=op://apps/DB/db-user
 DB_PASSWORD=op://apps/DB/db-password
 DB_HOST=op://apps/DB/db-host
 DB_PORT=op://apps/DB/db-port
-DISCORD_CI_WEBHOOK_URL=op://apps/discord_webhook/CI_URL
 GOOGLE_CLIENT_ID=op://apps/signaly/google-client-id
 GOOGLE_CLIENT_SECRET=op://apps/signaly/google-client-secret
 GOOGLE_REDIRECT_URI=op://apps/signaly/google-redirect-uri

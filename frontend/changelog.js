@@ -1,8 +1,16 @@
 'use strict'
 
-const APP_VERSION = '1.0.6'
+const APP_VERSION = '1.0.7'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.0.7',
+    date: '2026-06-29',
+    changes: [
+      'Webhook URL を https で発行するよう修正',
+      'CI・デプロイ通知を Discord から Signaly Webhook へ切り替え',
+    ],
+  },
   {
     version: '1.0.6',
     date: '2026-06-29',

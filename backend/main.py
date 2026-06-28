@@ -50,6 +50,9 @@ def _fetch_channels() -> Dict[str, str]:
 
 
 def _webhook_url(request: Request, channel_id: str) -> str:
+    base = auth.APP_URL
+    if base.startswith(("http://", "https://")):
+        return f"{base.rstrip('/')}/webhook/{channel_id}"
     return str(f"{request.base_url}webhook/{channel_id}")
 
 

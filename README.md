@@ -139,8 +139,8 @@ main へ push / workflow_dispatch
     ├─ tag      … version.json から v{version} タグを作成
     ├─ deploy   … rsync → systemd restart
     ├─ release  … GitHub Release を自動生成
-    ├─ notify   … デプロイ結果を Discord へ通知
-    └─ notify-release … リリース結果を Discord へ通知
+    ├─ notify   … デプロイ結果を Signaly へ通知
+    └─ notify-release … リリース結果を Signaly へ通知
 ```
 
 **注意:** 同じバージョンのタグが別コミットに既にある場合、workflow はエラーで止まります。`python scripts/bump_version.py` で version を上げてから `main` へマージしてください。
@@ -157,9 +157,11 @@ main へ push / workflow_dispatch
 | `DB` | `db-user` 等 | MySQL 共通接続情報 |
 | `Server` | `host` / `username` / `ssh-port` | SSH 接続 |
 | `githubaction-sshkey` | `private_key` | GitHub Actions 用 SSH 秘密鍵 |
-| `discord_webhook` | `CI_URL` | デプロイ通知 |
+| `signaly` | `ci-webhook-url` | CI / デプロイ通知（Signaly Webhook URL 全文） |
 
-GitHub Actions は `.github/deploy.env.tpl` から上記を読み込みます。`known_hosts` は 1Password ではなく `ssh-keyscan` で取得します。
+`ci-webhook-url` は Signaly 上で CI 用チャンネルを作成し、**Webhook URL** 画面で表示される URL（例: `https://signaly.gucchii.com/webhook/...`）を 1Password の `signaly` アイテムに登録します。GitHub Actions は `.github/scripts/signaly-notify.sh` 経由でこの URL に POST します。
+
+GitHub Actions は `.github/deploy.env.tpl` および `.github/ci.env.tpl` から上記を読み込みます。`known_hosts` は 1Password ではなく `ssh-keyscan` で取得します。
 
 GitHub Secrets には `OP_SERVICE_ACCOUNT_TOKEN` のみ登録します。
 
