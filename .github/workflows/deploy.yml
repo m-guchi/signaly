@@ -116,10 +116,7 @@ jobs:
 
             bash deploy/ensure_venv.sh "${TARGET_DIR}"
 
-            sed "s|{{TARGET_DIR}}|${TARGET_DIR}|g" \
-              deploy/signaly.service.template | sudo tee /etc/systemd/system/signaly.service > /dev/null
-            sudo systemctl daemon-reload
-            sudo systemctl restart signaly
+            sudo "${TARGET_DIR}/deploy/restart-service.sh" "${TARGET_DIR}"
           EOF
 
   release:
