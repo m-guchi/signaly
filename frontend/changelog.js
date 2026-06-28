@@ -1,8 +1,15 @@
 'use strict'
 
-const APP_VERSION = '1.0.5'
+const APP_VERSION = '1.0.6'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.0.6',
+    date: '2026-06-29',
+    changes: [
+      '本番デプロイ時に OAuth などアプリ設定を 1Password から .env へ同期',
+    ],
+  },
   {
     version: '1.0.5',
     date: '2026-06-29',
