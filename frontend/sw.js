@@ -65,8 +65,8 @@ self.addEventListener('push', (event) => {
 
       await self.registration.showNotification(data.title || 'Signaly', {
         body: data.body || '',
-        icon: 'icon-192.png?v=1.1.0',
-        badge: 'icon-192.png?v=1.1.0',
+        icon: 'icon-192.png?v=1.1.1',
+        badge: 'icon-192.png?v=1.1.1',
         tag: data.id || undefined,
         data: { url: data.url || './', channel: data.channel || '' },
       })
@@ -88,12 +88,7 @@ self.addEventListener('notificationclick', (event) => {
   )
 })
 
-// キャッシュしない：HTML / JS / CSS は常にネットワークから取得
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url)
-  if (url.origin !== self.location.origin) return
-  if (event.request.method !== 'GET') return
-  event.respondWith(fetch(event.request))
-})
-
-// キャッシュしない：全リクエストをネットワークから取得
+// fetch ハンドラは置かない。
+// 登録すると iOS PWA のコールドスタート時に SW 起動完了まで
+// HTML / API 取得がブロックされ、数秒〜10秒の白画面になる。
+// Push / バッジ同期だけが必要なので、ネットワークはブラウザに任せる。

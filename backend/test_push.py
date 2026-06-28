@@ -129,7 +129,36 @@ class TestSendTestPushToUser(unittest.TestCase):
             },
         ]
         result = send_test_push_to_user("user@example.com")
-        self.assertEqual(result, {"sent": 1, "failed": 0})
+        self.assertEqual(result["sent"], 1)
+        self.assertEqual(result["failed"], 0)
+        self.assertEqual(webpush.call_count, 1)
+
+    @patch("push.webpush")
+    @patch("push._load_vapid")
+    @patch("push._fetch_subscriptions_for_email")
+    @patch("push.push_configured", return_value=True)
+    def test_filters_by_endpoint(self, _configured, fetch_subs, _load_vapid, webpush):
+        fetch_subs.return_value = [
+            {
+                "id": "1",
+                "email": "user@example.com",
+                "endpoint": "https://fcm.googleapis.com/fcm/send/abc",
+                "p256dh": "k1",
+                "auth": "a1",
+            },
+            {
+                "id": "2",
+                "email": "user@example.com",
+                "endpoint": "https://web.push.apple.com/xyz",
+                "p256dh": "k2",
+                "auth": "a2",
+            },
+        ]
+        result = send_test_push_to_user(
+            "user@example.com",
+            "https://web.push.apple.com/xyz",
+        )
+        self.assertEqual(result["sent"], 1)
         self.assertEqual(webpush.call_count, 1)
 
 

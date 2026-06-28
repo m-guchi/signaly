@@ -43,7 +43,7 @@ function updatePageUrl(channelName) {
 let activeChannel = null
 let channelsByName = {}
 let eventSource = null
-let unread = {}  // channel_name -> count
+let unread = loadUnread()  // channel_name -> count
 let lastReadAt = loadLastReadAt()  // channel_name -> timestamp (ms)
 const seenIds = new Set()
 let pollTimer = null
@@ -54,6 +54,8 @@ let notificationSettings = { channels: {}, groups: {} }
 
 const LAST_READ_KEY = 'signaly-last-read'
 const LAST_CHANNEL_KEY = 'signaly-last-channel'
+const UNREAD_KEY = 'signaly-unread'
+const CHANNEL_TREE_KEY = 'signaly-channel-tree'
 const UNREAD_POLL_MS = 15000
 const NEW_CARD_FADE_MS = 60000
 
@@ -192,6 +194,7 @@ function showChannelListLoading() {
 }
 
 function showChannelListError(detail, retryFn) {
+  clearChannelListRefreshHint()
   channelList.innerHTML = ''
   const wrap = document.createElement('div')
   wrap.className = 'loading-text loading-text--error'
@@ -216,6 +219,27 @@ function showChannelListError(detail, retryFn) {
   }
 
   channelList.appendChild(wrap)
+}
+
+function clearChannelListRefreshHint() {
+  document.getElementById('channel-refresh-hint')?.remove()
+}
+
+function showChannelListRefreshHint(detail, retryFn) {
+  clearChannelListRefreshHint()
+  const hint = document.createElement('div')
+  hint.id = 'channel-refresh-hint'
+  hint.className = 'channel-refresh-hint'
+  hint.textContent = `更新できませんでした（${detail}）`
+  if (retryFn) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'channel-refresh-hint-btn'
+    btn.textContent = '再試行'
+    btn.addEventListener('click', retryFn)
+    hint.appendChild(btn)
+  }
+  channelList.parentElement?.insertBefore(hint, channelList)
 }
 
 function showFeedLoading() {
@@ -255,7 +279,14 @@ feedStateRetry?.addEventListener('click', () => {
 function loadLastReadAt() {
   try {
     const raw = localStorage.getItem(LAST_READ_KEY)
-    return raw ? JSON.parse(raw) : {}
+    if (!raw) return {}
+    const data = JSON.parse(raw)
+    const out = {}
+    for (const [k, v] of Object.entries(data)) {
+      const n = Number(v)
+      if (!Number.isNaN(n)) out[k] = n
+    }
+    return out
   } catch {
     return {}
   }
@@ -267,6 +298,49 @@ function saveLastReadAt() {
   } catch {
     // quota exceeded 等は無視
   }
+}
+
+function loadUnread() {
+  try {
+    const raw = localStorage.getItem(UNREAD_KEY)
+    if (!raw) return {}
+    const data = JSON.parse(raw)
+    const out = {}
+    for (const [k, v] of Object.entries(data)) {
+      const n = Number(v)
+      if (n > 0) out[k] = n
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+function saveUnread() {
+  try {
+    const data = {}
+    for (const [k, v] of Object.entries(unread)) {
+      const n = Number(v)
+      if (n > 0) data[k] = n
+    }
+    if (Object.keys(data).length) {
+      localStorage.setItem(UNREAD_KEY, JSON.stringify(data))
+    } else {
+      localStorage.removeItem(UNREAD_KEY)
+    }
+  } catch {
+    // quota exceeded 等は無視
+  }
+}
+
+function setChannelUnread(channelName, count) {
+  const n = Math.max(0, Number(count) || 0)
+  if (n > 0) {
+    unread[channelName] = n
+  } else {
+    delete unread[channelName]
+  }
+  saveUnread()
 }
 
 function loadLastChannel() {
@@ -289,10 +363,41 @@ function saveLastChannel(name) {
   }
 }
 
+function saveChannelTreeCache(data) {
+  try {
+    localStorage.setItem(CHANNEL_TREE_KEY, JSON.stringify(data))
+  } catch {
+    // quota exceeded 等は無視
+  }
+}
+
+function loadChannelTreeCache() {
+  try {
+    const raw = localStorage.getItem(CHANNEL_TREE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function clearChannelTreeCache() {
+  try {
+    localStorage.removeItem(CHANNEL_TREE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+function showAuthenticatedShell() {
+  SignalySettings.showAuthenticated()
+  if (addGroupBtn) addGroupBtn.hidden = false
+  if (reorderModeBtn) reorderModeBtn.hidden = false
+}
+
 function markChannelRead(channelName, timestampMs = Date.now()) {
   lastReadAt[channelName] = timestampMs
   saveLastReadAt()
-  unread[channelName] = 0
+  setChannelUnread(channelName, 0)
   updateBadge(channelName)
   updateDocumentTitle()
 }
@@ -861,7 +966,7 @@ async function selectChannel(name) {
   activeChannel = name
   saveLastChannel(name)
   updatePageUrl(name)
-  unread[name] = 0
+  setChannelUnread(name, 0)
   pendingNewCount = 0
   if (newNotifBanner) newNotifBanner.hidden = true
 
@@ -968,18 +1073,38 @@ async function pollUnreadChannels() {
   await Promise.all(names.map(async (name) => {
     if (name === activeChannel) return
     try {
-      const res = await fetch(apiUrl(`api/history/${name}?limit=50`))
+      const res = await fetch(apiUrl(`api/history/${name}?limit=200`))
       if (!res.ok) return
       const { logs } = await res.json()
 
       if (lastReadAt[name] === undefined) {
-        if (logs.length) {
-          const newest = Math.max(...logs.map(e => parseTimestamp(e.timestamp)))
-          lastReadAt[name] = newest
+        const timestamps = logs
+          .map(e => parseTimestamp(e.timestamp))
+          .filter(t => !Number.isNaN(t))
+        const storedUnread = unread[name] || 0
+
+        if (storedUnread > 0 && timestamps.length) {
+          const sorted = [...timestamps].sort((a, b) => b - a)
+          const baselineIdx = Math.min(storedUnread, sorted.length)
+          const baseline = baselineIdx < sorted.length
+            ? sorted[baselineIdx]
+            : sorted[sorted.length - 1] - 1
+          lastReadAt[name] = baseline
+          saveLastReadAt()
+          const count = logs.filter(e => parseTimestamp(e.timestamp) > baseline).length
+          if (unread[name] !== count) {
+            setChannelUnread(name, count)
+            changed = true
+          }
+          return
+        }
+
+        if (timestamps.length) {
+          lastReadAt[name] = Math.max(...timestamps)
           saveLastReadAt()
         }
         if (unread[name] !== 0) {
-          unread[name] = 0
+          setChannelUnread(name, 0)
           changed = true
         }
         return
@@ -988,7 +1113,7 @@ async function pollUnreadChannels() {
       const since = lastReadAt[name]
       const count = logs.filter(e => parseTimestamp(e.timestamp) > since).length
       if (unread[name] !== count) {
-        unread[name] = count
+        setChannelUnread(name, count)
         changed = true
       }
     } catch {
@@ -1054,7 +1179,7 @@ function connectSSE(channelName) {
       prependCard(entry, { isNew: true })
       markChannelRead(entry.channel, parseTimestamp(entry.timestamp))
     } else {
-      unread[entry.channel] = (unread[entry.channel] || 0) + 1
+      setChannelUnread(entry.channel, (unread[entry.channel] || 0) + 1)
       updateBadge(entry.channel)
       updateDocumentTitle()
     }
@@ -1375,40 +1500,119 @@ function showDesktopNotification(entry) {
   }
 }
 
+const TEST_NOTIFICATION = {
+  title: 'Signaly テスト通知',
+  body: '通知の受信確認用です。このまま届いていれば OK です。',
+  tag: 'signaly-test',
+}
+
+function testNotificationIcon() {
+  return typeof APP_VERSION !== 'undefined'
+    ? `icon-192.png?v=${APP_VERSION}`
+    : 'icon-192.png'
+}
+
+async function showTestNotificationLocally() {
+  const options = {
+    body: TEST_NOTIFICATION.body,
+    icon: testNotificationIcon(),
+    tag: TEST_NOTIFICATION.tag,
+  }
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready
+      if (reg.showNotification) {
+        await reg.showNotification(TEST_NOTIFICATION.title, options)
+        return true
+      }
+    }
+  } catch {
+    // Service Worker 経由が失敗したら Notification API へ
+  }
+  try {
+    new Notification(TEST_NOTIFICATION.title, options)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function sendServerTestPush() {
+  let endpoint = null
+  if (pushSupported()) {
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.getSubscription()
+      endpoint = sub?.endpoint ?? null
+    } catch {
+      endpoint = null
+    }
+  }
+  const res = await fetch(apiUrl('api/push/test'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(endpoint ? { endpoint } : {}),
+  })
+  if (res.ok) {
+    return { ok: true }
+  }
+  const err = await res.json().catch(() => ({}))
+  let detail = err.detail || 'テスト通知の送信に失敗しました'
+  if (typeof detail !== 'string') {
+    detail = 'テスト通知の送信に失敗しました'
+  }
+  if (res.status === 404) {
+    detail += '。「有効」または「再登録」を試してください。'
+  }
+  if (res.status === 502 && detail.includes('再登録')) {
+    pushSubscribed = false
+    SignalySettings.updateSettingsBtnState()
+  }
+  return { ok: false, message: detail }
+}
+
 async function sendTestNotification() {
   if (!('Notification' in window) || Notification.permission !== 'granted') {
     return { ok: false, message: '端末の通知が許可されていません。' }
   }
 
-  if (pushSupported() && pushSubscribed) {
+  const localOk = await showTestNotificationLocally()
+  const shouldTryServer = pushSupported() && pushSubscribed
+  let serverResult = null
+  if (shouldTryServer) {
     try {
-      const res = await fetch(apiUrl('api/push/test'), { method: 'POST' })
-      if (res.ok) {
-        return { ok: true, mode: 'push' }
+      serverResult = await sendServerTestPush()
+      if (!serverResult.ok) {
+        SignalySettings.renderNotifSettings?.()
       }
-      const err = await res.json().catch(() => ({}))
-      const detail = err.detail || 'テスト通知の送信に失敗しました'
-      if (res.status === 404) {
-        return { ok: false, message: `${detail}「有効にする」または「再登録する」を試してください。` }
-      }
-      return { ok: false, message: detail }
     } catch {
-      return { ok: false, message: 'ネットワークエラー' }
+      serverResult = { ok: false, message: 'ネットワークエラー' }
     }
   }
 
-  try {
-    const icon = typeof APP_VERSION !== 'undefined'
-      ? `icon-192.png?v=${APP_VERSION}`
-      : 'icon-192.png'
-    new Notification('Signaly テスト通知', {
-      body: '通知の受信確認用です。このまま届いていれば OK です。',
-      icon,
-      tag: 'signaly-test',
-    })
+  if (localOk && serverResult?.ok) {
+    return {
+      ok: true,
+      mode: 'both',
+      message: '通知を表示しました。バックグラウンドでも届くか、アプリを閉じて確認してください。',
+    }
+  }
+  if (localOk) {
+    if (shouldTryServer && serverResult && !serverResult.ok) {
+      return {
+        ok: true,
+        mode: 'local',
+        message: `通知は表示されました。サーバーからの Push は失敗したため、${serverResult.message}`,
+      }
+    }
     return { ok: true, mode: 'local' }
-  } catch {
-    return { ok: false, message: '通知の表示に失敗しました' }
+  }
+  if (serverResult?.ok) {
+    return { ok: true, mode: 'push' }
+  }
+  return {
+    ok: false,
+    message: serverResult?.message || '通知の表示に失敗しました',
   }
 }
 
@@ -1583,6 +1787,7 @@ createChannelForm?.addEventListener('submit', async (e) => {
     const listRes = await fetch(apiUrl('api/channels'))
     if (listRes.ok) {
       const tree = await listRes.json()
+      saveChannelTreeCache(tree)
       renderChannelTree(tree, data.name)
     }
   } catch {
@@ -1623,6 +1828,7 @@ async function refreshChannels(selectName = null) {
   const res = await fetch(apiUrl('api/channels'))
   if (!res.ok) return false
   const data = await res.json()
+  saveChannelTreeCache(data)
   renderChannelTree(data, selectName)
   await loadNotificationSettings()
   return true
@@ -1975,8 +2181,9 @@ channelSettingsRenameBtn?.addEventListener('click', async () => {
 
     const oldName = channelSettingsOriginalName
     if (unread[oldName]) {
-      unread[newName] = (unread[newName] || 0) + unread[oldName]
+      setChannelUnread(newName, (unread[newName] || 0) + unread[oldName])
       delete unread[oldName]
+      saveUnread()
     }
     if (lastReadAt[oldName]) {
       lastReadAt[newName] = Math.max(lastReadAt[newName] || 0, lastReadAt[oldName])
@@ -2032,6 +2239,7 @@ channelDeleteConfirm?.addEventListener('click', async () => {
 
     const deletedName = channelSettingsOriginalName
     delete unread[deletedName]
+    saveUnread()
     delete lastReadAt[deletedName]
     saveLastReadAt()
     closeChannelDeleteDialog()
@@ -2094,7 +2302,8 @@ function setupServiceWorkerAutoUpdate(registration) {
   window.addEventListener('focus', checkForUpdates)
   setInterval(checkForUpdates, 60 * 60 * 1000)
 
-  checkForUpdates()
+  // 起動直後はチャンネル取得を優先し、SW 更新チェックは後回しにする
+  setTimeout(checkForUpdates, 5000)
 }
 
 async function registerServiceWorker() {
@@ -2120,6 +2329,8 @@ async function registerServiceWorker() {
 
 async function init() {
 
+  clearChannelListRefreshHint()
+
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) void updateAppBadge()
   })
@@ -2130,8 +2341,17 @@ async function init() {
   // SW 登録は初回 iOS PWA で遅くなりがちなので起動をブロックしない
   void registerServiceWorker()
 
-  showChannelListLoading()
-  showFeedLoading()
+  const cachedTree = loadChannelTreeCache()
+  const startupChannel = resolveStartupChannel()
+  if (cachedTree) {
+    showAuthenticatedShell()
+    renderChannelTree(cachedTree, startupChannel)
+    updateAllBadges()
+    startUnreadPolling()
+  } else {
+    showChannelListLoading()
+    showFeedLoading()
+  }
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
@@ -2139,6 +2359,7 @@ async function init() {
     const res = await fetch(apiUrl('api/channels'), { signal: controller.signal })
     clearTimeout(timeout)
     if (res.status === 401) {
+      clearChannelTreeCache()
       channelList.innerHTML = ''
       hideFeedState()
       loginOverlay.classList.add('visible')
@@ -2146,10 +2367,10 @@ async function init() {
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
-    SignalySettings.showAuthenticated()
-    if (addGroupBtn) addGroupBtn.hidden = false
-    if (reorderModeBtn) reorderModeBtn.hidden = false
-    renderChannelTree(data, resolveStartupChannel())
+    clearChannelListRefreshHint()
+    saveChannelTreeCache(data)
+    showAuthenticatedShell()
+    renderChannelTree(data, startupChannel)
     clearPushDeepLinkMarker()
     startUnreadPolling()
     void loadNotificationSettings()
@@ -2160,6 +2381,13 @@ async function init() {
     })
   } catch (err) {
     clearTimeout(timeout)
+    if (cachedTree) {
+      const msg = err.name === 'AbortError' ? 'タイムアウト' : err.message
+      showChannelListRefreshHint(msg, init)
+      startUnreadPolling()
+      void loadNotificationSettings()
+      return
+    }
     const msg = err.name === 'AbortError' ? 'タイムアウト' : err.message
     showChannelListError(msg, init)
     showFeedError('チャンネル一覧の読み込みに失敗しました', init)

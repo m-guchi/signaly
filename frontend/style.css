@@ -536,6 +536,30 @@ html, body {
   border-color: var(--text-muted);
 }
 
+.channel-refresh-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 10px 8px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 8%, transparent);
+  border-radius: 6px;
+}
+
+.channel-refresh-hint-btn {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
 .loading-spinner {
   display: inline-block;
   width: 14px;
@@ -1528,6 +1552,10 @@ html, body {
 
 .notif-test-result--ok {
   color: var(--accent);
+}
+
+.notif-test-result--warn {
+  color: var(--warning);
 }
 
 .notif-test-result--error {
