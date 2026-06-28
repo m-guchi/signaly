@@ -13,4 +13,4 @@ SECRET_KEY=op://apps/signaly/secret-key
 VAPID_PUBLIC_KEY=op://apps/signaly/vapid-public-key
 VAPID_PRIVATE_KEY=op://apps/signaly/vapid-private-key
 VAPID_SUBJECT=op://apps/signaly/vapid-subject
-APP_DIR=op://apps/signaly/deploy-dir
+APP_DIR=op://apps/signaly/target-dir
