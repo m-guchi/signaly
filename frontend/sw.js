@@ -30,8 +30,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title || 'Signaly', {
       body: data.body || '',
-      icon: 'icon-192.png?v=1.0.0',
-      badge: 'icon-192.png?v=1.0.0',
+      icon: 'icon-192.png?v=1.0.1',
+      badge: 'icon-192.png?v=1.0.1',
       tag: data.id || undefined,
       data: { url: data.url || './', channel: data.channel || '' },
     })
