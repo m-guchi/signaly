@@ -1537,38 +1537,61 @@ async function showTestNotificationLocally() {
   }
 }
 
-async function sendServerTestPush() {
-  let endpoint = null
-  if (pushSupported()) {
-    try {
-      const reg = await navigator.serviceWorker.ready
-      const sub = await reg.pushManager.getSubscription()
-      endpoint = sub?.endpoint ?? null
-    } catch {
-      endpoint = null
-    }
-  }
+async function requestServerTestPush(subscriptionJson) {
   const res = await fetch(apiUrl('api/push/test'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(endpoint ? { endpoint } : {}),
+    body: JSON.stringify({
+      endpoint: subscriptionJson.endpoint,
+      keys: subscriptionJson.keys,
+    }),
   })
   if (res.ok) {
     return { ok: true }
   }
   const err = await res.json().catch(() => ({}))
-  let detail = err.detail || 'テスト通知の送信に失敗しました'
+  let detail = err.detail || 'バックグラウンド通知の送信に失敗しました'
   if (typeof detail !== 'string') {
-    detail = 'テスト通知の送信に失敗しました'
+    detail = 'バックグラウンド通知の送信に失敗しました'
   }
-  if (res.status === 404) {
-    detail += '。「有効」または「再登録」を試してください。'
-  }
-  if (res.status === 502 && detail.includes('再登録')) {
+  const needsReregister = res.status === 404
+    || (res.status === 502 && detail.includes('再登録'))
+  if (needsReregister) {
     pushSubscribed = false
     SignalySettings.updateSettingsBtnState()
   }
-  return { ok: false, message: detail }
+  return { ok: false, message: detail, needsReregister }
+}
+
+async function sendServerTestPush() {
+  if (!pushSupported()) {
+    return { ok: false, message: 'この端末は Push 非対応です' }
+  }
+
+  await subscribePush(false)
+
+  const reg = await navigator.serviceWorker.ready
+  let sub = await reg.pushManager.getSubscription()
+  if (!sub) {
+    return { ok: false, message: 'Push 登録がありません。「有効」を試してください。', needsReregister: true }
+  }
+
+  let result = await requestServerTestPush(sub.toJSON())
+  if (!result.ok && result.needsReregister) {
+    const renewed = await subscribePush(true)
+    if (renewed) {
+      sub = await reg.pushManager.getSubscription()
+      if (sub) {
+        result = await requestServerTestPush(sub.toJSON())
+      }
+    }
+  }
+
+  if (result.ok) {
+    pushSubscribed = true
+    SignalySettings.updateSettingsBtnState()
+  }
+  return result
 }
 
 async function sendTestNotification() {
@@ -1602,7 +1625,9 @@ async function sendTestNotification() {
       return {
         ok: true,
         mode: 'local',
-        message: `通知は表示されました。サーバーからの Push は失敗したため、${serverResult.message}`,
+        message: serverResult.message
+          ? `通知は表示されました。${serverResult.message}`
+          : '通知は表示されました。アプリを閉じた状態での通知は届いていない可能性があります。「再登録」を試してください。',
       }
     }
     return { ok: true, mode: 'local' }
