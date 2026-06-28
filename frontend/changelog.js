@@ -1,8 +1,16 @@
 'use strict'
 
-const APP_VERSION = '1.1.6'
+const APP_VERSION = '1.1.7'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.1.7',
+    date: '2026-06-29',
+    changes: [
+      'チャンネルの通知「無効」設定が、アプリ起動中にも正しく反映されるようになった',
+      'アプリを閉じているときに Push 通知が届かない不具合を修正',
+    ],
+  },
   {
     version: '1.1.6',
     date: '2026-06-29',
