@@ -188,7 +188,7 @@ html, body {
 #channel-list {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0 8px;
+  padding: 4px 12px 8px;
 }
 
 .channel-section-header {
@@ -205,6 +205,92 @@ html, body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-subtle);
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.reorder-hint {
+  margin: 0;
+  padding: 0 12px 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+#sidebar.reorder-mode .reorder-hint {
+  display: block;
+}
+
+#sidebar.reorder-mode .reorder-hint[hidden] {
+  display: none;
+}
+
+#sidebar.reorder-mode .channel-section-actions .add-channel-btn:not(#reorder-mode-btn) {
+  display: none;
+}
+
+#sidebar.reorder-mode .channel-group-actions,
+#sidebar.reorder-mode .channel-settings-btn,
+#sidebar.reorder-mode .group-settings-btn {
+  display: none;
+}
+
+#sidebar.reorder-mode #reorder-mode-btn {
+  color: var(--accent);
+  background: var(--surface-hover);
+  pointer-events: auto;
+}
+
+.reorder-handle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  color: var(--text-subtle);
+  cursor: grab;
+  touch-action: none;
+}
+
+.reorder-handle:active {
+  cursor: grabbing;
+}
+
+.channel-group--reorderable {
+  cursor: grab;
+}
+
+.channel-group--reorderable.reorder-dragging,
+.channel-row--reorderable.reorder-dragging {
+  opacity: 0.55;
+}
+
+.channel-group-channels.reorder-drop-over {
+  background: var(--surface-hover);
+  border-radius: 6px;
+  outline: 1px dashed var(--accent-dim);
+  outline-offset: -1px;
+  min-height: 28px;
+}
+
+.channel-row--reorderable {
+  cursor: grab;
+}
+
+.channel-row--reorderable .channel-item {
+  pointer-events: none;
 }
 
 .add-channel-btn {
@@ -222,6 +308,79 @@ html, body {
 .add-channel-btn:hover {
   color: var(--text);
   background: var(--surface-hover);
+}
+
+.channel-group {
+  margin-bottom: 2px;
+}
+
+.channel-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0 4px;
+  width: 100%;
+}
+
+.channel-group-header:hover .group-settings-btn,
+.channel-group-header:focus-within .group-settings-btn {
+  opacity: 1;
+}
+
+.channel-group-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.channel-group-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.channel-group--ungrouped .channel-group-label {
+  color: var(--text-muted);
+}
+
+.channel-group-channels {
+  padding-bottom: 2px;
+}
+
+.group-settings-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-subtle);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s, background 0.1s;
+}
+
+.group-settings-btn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+@media (max-width: 767px) {
+  .group-settings-btn {
+    opacity: 1;
+  }
 }
 
 .channel-row {
@@ -304,10 +463,9 @@ html, body {
   color: var(--accent);
 }
 
-@media (max-width: 767px) {
-  .channel-settings-btn {
-    opacity: 1;
-  }
+.channel-item--unread .channel-item-label {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .badge {
@@ -337,6 +495,7 @@ html, body {
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+  position: relative;
 }
 
 #feed-header {
@@ -408,6 +567,34 @@ html, body {
   gap: 8px;
 }
 
+.new-notif-banner {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 10;
+  padding: 8px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: background 0.15s, transform 0.15s;
+}
+
+.new-notif-banner:hover {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+@media (max-width: 767px) {
+  .channel-settings-btn {
+    opacity: 1;
+  }
+}
+
 /* ── Notification card ─────────────────────── */
 
 .notif-card {
@@ -421,6 +608,22 @@ html, body {
 
 .notif-card[data-level="warning"] { border-left-color: var(--warning); }
 .notif-card[data-level="error"]   { border-left-color: var(--error); }
+
+.notif-card--new {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+
+.notif-new-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-radius: 4px;
+  padding: 1px 6px;
+  letter-spacing: 0.02em;
+}
 
 @keyframes slide-in {
   from { opacity: 0; transform: translateY(-6px); }
@@ -992,14 +1195,17 @@ html, body {
   margin-top: 8px;
 }
 
-.push-action-title {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-subtle);
-  text-align: center;
-  margin: 0 0 8px;
+.notif-push-block .settings-btn-group {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.notif-push-block .settings-btn-group .create-channel-submit,
+.notif-push-block .settings-btn-group .settings-danger-btn {
+  min-width: 0;
+  flex: 1;
+  max-width: 10em;
 }
 
 .settings-btn-group .create-channel-submit,

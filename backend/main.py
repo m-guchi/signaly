@@ -20,7 +20,7 @@ from pydantic import BaseModel, field_validator
 from itsdangerous import BadData
 
 import auth
-from database import ApiKey, Channel, Notification, PushSubscription, get_session, init_db
+from database import ApiKey, Channel, ChannelGroup, Notification, PushSubscription, get_session, init_db
 from push import push_configured, send_push_notifications, validate_push_config
 from webhook import parse_webhook_payload
 
@@ -46,44 +46,78 @@ def _webhook_url(request: Request, channel_id: str) -> str:
     return str(f"{request.base_url}webhook/{channel_id}")
 
 
-def _create_channel(name: str) -> Dict[str, str]:
+def _next_channel_sort_order(session, group_id: Optional[str]) -> int:
+    if group_id:
+        filt = Channel.group_id == group_id
+    else:
+        filt = Channel.group_id.is_(None)
+    max_order = (
+        session.query(Channel.sort_order)
+        .filter(filt)
+        .order_by(Channel.sort_order.desc())
+        .first()
+    )
+    return (max_order[0] + 1) if max_order else 0
+
+
+def _create_channel(name: str, group_id: Optional[str] = None) -> Dict[str, str]:
     channel_id = secrets.token_urlsafe(16)
     now = datetime.now(timezone.utc)
     with get_session() as session:
         if session.query(Channel).filter(Channel.name == name).first():
             raise ValueError("duplicate")
+        if group_id and not session.query(ChannelGroup).filter(ChannelGroup.id == group_id).first():
+            raise ValueError("group_not_found")
+        sort_order = _next_channel_sort_order(session, group_id)
         session.add(
             Channel(
                 id=channel_id,
                 name=name,
+                group_id=group_id,
+                sort_order=sort_order,
                 created_at=now,
                 updated_at=now,
             )
         )
         session.commit()
-    return {"id": channel_id, "name": name}
+    return {"id": channel_id, "name": name, "group_id": group_id}
 
 
-def _update_channel(channel_id: str, name: str) -> Optional[Dict[str, str]]:
+def _update_channel(
+    channel_id: str,
+    name: Optional[str] = None,
+    group_id: Optional[str] = None,
+    update_group_id: bool = False,
+) -> Optional[Dict[str, str]]:
     now = datetime.now(timezone.utc)
     with get_session() as session:
         row = session.query(Channel).filter(Channel.id == channel_id).first()
         if not row:
             return None
         old_name = row.name
-        if old_name != name and session.query(Channel).filter(Channel.name == name).first():
-            raise ValueError("duplicate")
-        row.name = name
-        row.updated_at = now
-        if old_name != name:
-            session.query(Notification).filter(Notification.channel == old_name).update(
-                {Notification.channel: name},
-                synchronize_session=False,
-            )
+        if name is not None:
+            if name != old_name and session.query(Channel).filter(Channel.name == name).first():
+                raise ValueError("duplicate")
+            row.name = name
+            row.updated_at = now
+            if old_name != name:
+                session.query(Notification).filter(Notification.channel == old_name).update(
+                    {Notification.channel: name},
+                    synchronize_session=False,
+                )
+        if update_group_id:
+            if group_id is not None and not session.query(ChannelGroup).filter(
+                ChannelGroup.id == group_id
+            ).first():
+                raise ValueError("group_not_found")
+            row.group_id = group_id
+            row.updated_at = now
         session.commit()
-    if old_name != name and old_name in _subscribers:
-        _subscribers[name] = _subscribers.pop(old_name)
-    return {"id": channel_id, "name": name}
+        result_name = row.name
+        result_group_id = row.group_id
+    if name is not None and old_name != name and old_name in _subscribers:
+        _subscribers[result_name] = _subscribers.pop(old_name)
+    return {"id": channel_id, "name": result_name, "group_id": result_group_id}
 
 
 def _delete_channel(channel_id: str) -> Optional[str]:
@@ -99,6 +133,119 @@ def _delete_channel(channel_id: str) -> Optional[str]:
         session.commit()
     _subscribers.pop(name, None)
     return name
+
+
+def _create_group(name: str) -> Dict[str, object]:
+    group_id = secrets.token_urlsafe(16)
+    now = datetime.now(timezone.utc)
+    with get_session() as session:
+        if session.query(ChannelGroup).filter(ChannelGroup.name == name).first():
+            raise ValueError("duplicate")
+        max_order = session.query(ChannelGroup.sort_order).order_by(
+            ChannelGroup.sort_order.desc()
+        ).first()
+        sort_order = (max_order[0] + 1) if max_order else 0
+        session.add(
+            ChannelGroup(
+                id=group_id,
+                name=name,
+                sort_order=sort_order,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        session.commit()
+    return {"id": group_id, "name": name, "sort_order": sort_order}
+
+
+def _update_group(group_id: str, name: str) -> Optional[Dict[str, object]]:
+    now = datetime.now(timezone.utc)
+    with get_session() as session:
+        row = session.query(ChannelGroup).filter(ChannelGroup.id == group_id).first()
+        if not row:
+            return None
+        if name != row.name and session.query(ChannelGroup).filter(ChannelGroup.name == name).first():
+            raise ValueError("duplicate")
+        row.name = name
+        row.updated_at = now
+        session.commit()
+        return {"id": group_id, "name": name, "sort_order": row.sort_order}
+
+
+def _delete_group(group_id: str) -> Optional[str]:
+    with get_session() as session:
+        row = session.query(ChannelGroup).filter(ChannelGroup.id == group_id).first()
+        if not row:
+            return None
+        name = row.name
+        session.delete(row)
+        session.commit()
+    return name
+
+
+def _reorder_layout(groups: List[Dict[str, object]], channels: List[Dict[str, object]]) -> None:
+    now = datetime.now(timezone.utc)
+    with get_session() as session:
+        db_groups = {g.id: g for g in session.query(ChannelGroup).all()}
+        db_channels = {c.id: c for c in session.query(Channel).all()}
+
+        if {g["id"] for g in groups} != set(db_groups):
+            raise ValueError("invalid_groups")
+        if {c["id"] for c in channels} != set(db_channels):
+            raise ValueError("invalid_channels")
+
+        group_ids = set(db_groups)
+        for item in groups:
+            row = db_groups[item["id"]]
+            row.sort_order = item["sort_order"]
+            row.updated_at = now
+
+        for item in channels:
+            row = db_channels[item["id"]]
+            group_id = item.get("group_id")
+            if group_id is not None and group_id not in group_ids:
+                raise ValueError("group_not_found")
+            row.group_id = group_id
+            row.sort_order = item["sort_order"]
+            row.updated_at = now
+
+        session.commit()
+
+
+def _fetch_channels_tree(request: Request) -> Dict[str, object]:
+    with get_session() as session:
+        group_rows = session.query(ChannelGroup).order_by(
+            ChannelGroup.sort_order, ChannelGroup.name
+        ).all()
+        channel_rows = session.query(Channel).all()
+
+    channel_rows.sort(key=lambda r: (r.sort_order, r.name.lower()))
+
+    groups_by_id = {
+        g.id: {
+            "id": g.id,
+            "name": g.name,
+            "sort_order": g.sort_order,
+            "channels": [],
+        }
+        for g in group_rows
+    }
+    ungrouped: List[dict] = []
+    flat: List[dict] = []
+
+    for row in channel_rows:
+        item = _channel_item(request, row.id, row.name, row.group_id)
+        flat.append(item)
+        if row.group_id and row.group_id in groups_by_id:
+            groups_by_id[row.group_id]["channels"].append(item)
+        else:
+            ungrouped.append(item)
+
+    return {
+        "groups": list(groups_by_id.values()),
+        "ungrouped": ungrouped,
+        "channels": flat,
+    }
 
 
 def _resolve_api_key_email(key: str) -> Optional[str]:
@@ -168,6 +315,15 @@ def _delete_api_key(email: str, key_id: str) -> bool:
         return True
 
 
+def _utc_iso(dt: datetime) -> str:
+    """Serialize as UTC ISO-8601 with Z suffix (MySQL round-trip may drop tzinfo)."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.%f").rstrip("0").rstrip(".") + "Z"
+
+
 def _save_notification(entry: dict) -> None:
     with get_session() as session:
         session.add(
@@ -177,7 +333,7 @@ def _save_notification(entry: dict) -> None:
                 title=entry["title"],
                 message=entry["message"],
                 level=entry["level"],
-                timestamp=datetime.fromisoformat(entry["timestamp"]),
+                timestamp=datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00")),
                 fields=json.dumps(entry["fields"], ensure_ascii=False) if entry.get("fields") else None,
                 color=entry.get("color"),
             )
@@ -190,7 +346,7 @@ def _fetch_history(channel_name: str, limit: int) -> List[dict]:
         rows = (
             session.query(Notification)
             .filter(Notification.channel == channel_name)
-            .order_by(Notification.timestamp.asc())
+            .order_by(Notification.timestamp.desc())
             .limit(limit)
             .all()
         )
@@ -201,7 +357,7 @@ def _fetch_history(channel_name: str, limit: int) -> List[dict]:
                 "title": r.title,
                 "message": r.message,
                 "level": r.level,
-                "timestamp": r.timestamp.isoformat(),
+                "timestamp": _utc_iso(r.timestamp),
                 "fields": json.loads(r.fields) if getattr(r, "fields", None) else None,
                 "color": getattr(r, "color", None),
             }
@@ -269,7 +425,7 @@ app = FastAPI(title="Signaly", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -373,12 +529,20 @@ async def auth_logout(response: Response):
 # Signaly レガシー形式（message / title / level 等）も引き続き利用可能。
 
 
-def _channel_item(request: Request, channel_id: str, name: str) -> dict:
-    return {
+def _channel_item(
+    request: Request,
+    channel_id: str,
+    name: str,
+    group_id: Optional[str] = None,
+) -> dict:
+    item = {
         "id": channel_id,
         "name": name,
         "webhook_url": _webhook_url(request, channel_id),
     }
+    if group_id:
+        item["group_id"] = group_id
+    return item
 
 
 async def _read_webhook_body(request: Request) -> dict:
@@ -434,7 +598,7 @@ async def receive_webhook(channel_id: str, request: Request):
         "level": parsed["level"],
         "color": parsed["color"],
         "fields": parsed["fields"],
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": _utc_iso(datetime.now(timezone.utc)),
     }
 
     await asyncio.to_thread(_save_notification, entry)
@@ -454,6 +618,7 @@ async def receive_webhook(channel_id: str, request: Request):
 
 class CreateChannelRequest(BaseModel):
     name: str
+    group_id: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -465,13 +630,105 @@ class CreateChannelRequest(BaseModel):
             raise ValueError("チャンネル名は100文字以内にしてください")
         return v
 
+    @field_validator("group_id")
+    @classmethod
+    def validate_group_id(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
+
+
+class UpdateChannelRequest(BaseModel):
+    name: Optional[str] = None
+    group_id: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            raise ValueError("チャンネル名を入力してください")
+        if len(v) > 100:
+            raise ValueError("チャンネル名は100文字以内にしてください")
+        return v
+
+    @field_validator("group_id")
+    @classmethod
+    def validate_group_id(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
+
+
+class CreateGroupRequest(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("グループ名を入力してください")
+        if len(v) > 100:
+            raise ValueError("グループ名は100文字以内にしてください")
+        return v
+
+
+class UpdateGroupRequest(BaseModel):
+    name: str
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("グループ名を入力してください")
+        if len(v) > 100:
+            raise ValueError("グループ名は100文字以内にしてください")
+        return v
+
+
+class LayoutGroupItem(BaseModel):
+    id: str
+    sort_order: int
+
+
+class LayoutChannelItem(BaseModel):
+    id: str
+    group_id: Optional[str] = None
+    sort_order: int
+
+
+class ReorderLayoutRequest(BaseModel):
+    groups: List[LayoutGroupItem]
+    channels: List[LayoutChannelItem]
+
 
 @app.get("/api/channels")
 async def get_channels(request: Request, email: str = Depends(auth.require_auth)):
-    channels = await asyncio.to_thread(_fetch_channels)
-    items = [_channel_item(request, cid, name) for cid, name in channels.items()]
-    items.sort(key=lambda c: c["name"])
-    return {"channels": items}
+    return await asyncio.to_thread(_fetch_channels_tree, request)
+
+
+@app.put("/api/channels/layout")
+async def reorder_channels_layout(
+    body: ReorderLayoutRequest,
+    email: str = Depends(auth.require_auth),
+):
+    try:
+        await asyncio.to_thread(
+            _reorder_layout,
+            [g.model_dump() for g in body.groups],
+            [c.model_dump() for c in body.channels],
+        )
+    except ValueError as exc:
+        if str(exc) == "group_not_found":
+            raise HTTPException(status_code=404, detail="グループが見つかりません")
+        raise HTTPException(status_code=400, detail="並び替えデータが不正です")
+    return {"ok": True}
 
 
 @app.post("/api/channels")
@@ -481,27 +738,44 @@ async def create_channel(
     email: str = Depends(auth.require_auth),
 ):
     try:
-        created = await asyncio.to_thread(_create_channel, body.name)
-    except ValueError:
+        created = await asyncio.to_thread(_create_channel, body.name, body.group_id)
+    except ValueError as exc:
+        if str(exc) == "group_not_found":
+            raise HTTPException(status_code=404, detail="グループが見つかりません")
         raise HTTPException(status_code=409, detail="同じ名前のチャンネルが既に存在します")
 
-    return _channel_item(request, created["id"], created["name"])
+    return _channel_item(request, created["id"], created["name"], created.get("group_id"))
 
 
 @app.patch("/api/channels/{channel_id}")
 async def update_channel(
     channel_id: str,
     request: Request,
-    body: CreateChannelRequest,
+    body: UpdateChannelRequest,
     email: str = Depends(auth.require_auth),
 ):
+    if body.name is None and body.group_id is None:
+        raise HTTPException(status_code=400, detail="更新する項目を指定してください")
     try:
-        updated = await asyncio.to_thread(_update_channel, channel_id, body.name)
-    except ValueError:
+        updated = await asyncio.to_thread(
+            _update_channel,
+            channel_id,
+            body.name,
+            body.group_id,
+            "group_id" in body.model_fields_set,
+        )
+    except ValueError as exc:
+        if str(exc) == "group_not_found":
+            raise HTTPException(status_code=404, detail="グループが見つかりません")
         raise HTTPException(status_code=409, detail="同じ名前のチャンネルが既に存在します")
     if not updated:
         raise HTTPException(status_code=404, detail="Channel not found")
-    return _channel_item(request, updated["id"], updated["name"])
+    return _channel_item(
+        request,
+        updated["id"],
+        updated["name"],
+        updated.get("group_id"),
+    )
 
 
 @app.delete("/api/channels/{channel_id}")
@@ -509,6 +783,44 @@ async def delete_channel(channel_id: str, email: str = Depends(auth.require_auth
     name = await asyncio.to_thread(_delete_channel, channel_id)
     if not name:
         raise HTTPException(status_code=404, detail="Channel not found")
+    return {"ok": True, "name": name}
+
+
+@app.get("/api/groups")
+async def get_groups(request: Request, email: str = Depends(auth.require_auth)):
+    tree = await asyncio.to_thread(_fetch_channels_tree, request)
+    return {"groups": tree["groups"]}
+
+
+@app.post("/api/groups")
+async def create_group(body: CreateGroupRequest, email: str = Depends(auth.require_auth)):
+    try:
+        created = await asyncio.to_thread(_create_group, body.name)
+    except ValueError:
+        raise HTTPException(status_code=409, detail="同じ名前のグループが既に存在します")
+    return created
+
+
+@app.patch("/api/groups/{group_id}")
+async def update_group(
+    group_id: str,
+    body: UpdateGroupRequest,
+    email: str = Depends(auth.require_auth),
+):
+    try:
+        updated = await asyncio.to_thread(_update_group, group_id, body.name)
+    except ValueError:
+        raise HTTPException(status_code=409, detail="同じ名前のグループが既に存在します")
+    if not updated:
+        raise HTTPException(status_code=404, detail="Group not found")
+    return updated
+
+
+@app.delete("/api/groups/{group_id}")
+async def delete_group(group_id: str, email: str = Depends(auth.require_auth)):
+    name = await asyncio.to_thread(_delete_group, group_id)
+    if not name:
+        raise HTTPException(status_code=404, detail="Group not found")
     return {"ok": True, "name": name}
 
 

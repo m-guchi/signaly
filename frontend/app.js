@@ -13,15 +13,23 @@ let activeChannel = null
 let channelsByName = {}
 let eventSource = null
 let unread = {}  // channel_name -> count
+let lastReadAt = loadLastReadAt()  // channel_name -> timestamp (ms)
 const seenIds = new Set()
 let pollTimer = null
+let unreadPollTimer = null
 let pushSubscribed = false
+let pendingNewCount = 0
+
+const LAST_READ_KEY = 'signaly-last-read'
+const UNREAD_POLL_MS = 15000
+const NEW_CARD_FADE_MS = 60000
 
 // ── DOM ──────────────────────────────────────────────────────────────────────
 
 const channelList = document.getElementById('channel-list')
 const feed = document.getElementById('feed')
 const emptyState = document.getElementById('empty-state')
+const newNotifBanner = document.getElementById('new-notif-banner')
 const channelTitle = document.getElementById('channel-title')
 const statusEl = document.getElementById('status')
 const sidebar = document.getElementById('sidebar')
@@ -73,20 +81,62 @@ mobileSidebarMq.addEventListener('change', () => {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function relativeTime(isoString) {
-  const diff = Math.floor((Date.now() - new Date(isoString)) / 1000)
-  if (diff < 60) return 'たった今'
-  if (diff < 3600) return `${Math.floor(diff / 60)} 分前`
-  if (diff < 86400) return `${Math.floor(diff / 3600)} 時間前`
-  return new Date(isoString).toLocaleDateString('ja-JP', {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  })
+function parseTimestamp(isoString) {
+  const s = String(isoString ?? '')
+  if (!s) return NaN
+  // MySQL 経由で tz なし UTC が返る場合は UTC として解釈する
+  if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s) && !(/[Zz]$|[+-]\d{2}:\d{2}$/.test(s))) {
+    return Date.parse(s.replace(' ', 'T') + 'Z')
+  }
+  return Date.parse(s)
+}
+
+function formatNotificationTime(isoString) {
+  const ts = parseTimestamp(isoString)
+  if (Number.isNaN(ts)) return ''
+  const d = new Date(ts)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 function setStatus(state) {
   statusEl.className = `status status--${state}`
   const titles = { connected: '接続中', connecting: '接続中…', disconnected: '切断' }
   statusEl.title = titles[state] ?? state
+}
+
+function loadLastReadAt() {
+  try {
+    const raw = localStorage.getItem(LAST_READ_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveLastReadAt() {
+  try {
+    localStorage.setItem(LAST_READ_KEY, JSON.stringify(lastReadAt))
+  } catch {
+    // quota exceeded 等は無視
+  }
+}
+
+function markChannelRead(channelName, timestampMs = Date.now()) {
+  lastReadAt[channelName] = timestampMs
+  saveLastReadAt()
+  unread[channelName] = 0
+  updateBadge(channelName)
+  updateDocumentTitle()
+}
+
+function totalUnread() {
+  return Object.values(unread).reduce((sum, n) => sum + (n || 0), 0)
+}
+
+function updateDocumentTitle() {
+  const total = totalUnread()
+  document.title = total > 0 ? `(${total > 99 ? '99+' : total}) Signaly` : 'Signaly'
 }
 
 // ── Notification card ────────────────────────────────────────────────────────
@@ -106,9 +156,9 @@ function renderFieldValue(raw) {
     .replace(/:rocket:/g, '🚀')
 }
 
-function createCard(entry) {
+function createCard(entry, { isNew = false } = {}) {
   const card = document.createElement('div')
-  card.className = 'notif-card'
+  card.className = 'notif-card' + (isNew ? ' notif-card--new' : '')
   card.dataset.level = entry.level || 'info'
   card.dataset.id = entry.id
 
@@ -125,10 +175,17 @@ function createCard(entry) {
 
   const time = document.createElement('span')
   time.className = 'notif-time'
-  time.textContent = relativeTime(entry.timestamp)
-  time.title = new Date(entry.timestamp).toLocaleString('ja-JP')
+  time.textContent = formatNotificationTime(entry.timestamp)
 
   header.appendChild(title)
+
+  if (isNew) {
+    const badge = document.createElement('span')
+    badge.className = 'notif-new-badge'
+    badge.textContent = '新着'
+    header.appendChild(badge)
+  }
+
   header.appendChild(time)
   card.appendChild(header)
 
@@ -164,17 +221,51 @@ function createCard(entry) {
   return card
 }
 
-function prependCard(entry) {
+function clearNewCardHighlight(card) {
+  card.classList.remove('notif-card--new')
+  card.querySelector('.notif-new-badge')?.remove()
+}
+
+function dismissNewHighlights() {
+  feed.querySelectorAll('.notif-card--new').forEach(clearNewCardHighlight)
+  pendingNewCount = 0
+  if (newNotifBanner) newNotifBanner.hidden = true
+}
+
+function scheduleNewCardFade(card) {
+  setTimeout(() => {
+    if (card.isConnected) clearNewCardHighlight(card)
+  }, NEW_CARD_FADE_MS)
+}
+
+function updateNewNotifBanner() {
+  if (!newNotifBanner || pendingNewCount <= 0) return
+  const scrolled = feed.scrollTop > 40
+  newNotifBanner.hidden = !scrolled
+  newNotifBanner.textContent = `新着 ${pendingNewCount} 件`
+}
+
+function prependCard(entry, { isNew = false } = {}) {
   if (seenIds.has(entry.id)) return
   seenIds.add(entry.id)
 
-  const card = createCard(entry)
+  const card = createCard(entry, { isNew })
   if (feed.firstChild) {
     feed.insertBefore(card, feed.firstChild)
   } else {
     feed.appendChild(card)
   }
-  emptyState.hidden = true
+  if (emptyState) emptyState.hidden = true
+
+  if (isNew) {
+    if (feed.scrollTop > 40) {
+      pendingNewCount++
+      updateNewNotifBanner()
+    } else {
+      feed.scrollTop = 0
+    }
+    scheduleNewCardFade(card)
+  }
 }
 
 // ── Channel list ─────────────────────────────────────────────────────────────
@@ -184,36 +275,85 @@ const CHANNEL_SETTINGS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" f
   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
 </svg>`
 
-function renderChannels(channels, selectName = null) {
-  channelList.innerHTML = ''
-  channelsByName = {}
-  const normalized = channels.map(c => (typeof c === 'string' ? { name: c } : c))
-  const names = normalized.map(c => c.name)
+const ADD_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+  <line x1="12" y1="5" x2="12" y2="19"/>
+  <line x1="5" y1="12" x2="19" y2="12"/>
+</svg>`
 
-  if (!names.length) {
-    channelList.innerHTML = '<div class="loading-text">チャンネルなし</div>'
-    activeChannel = null
-    channelTitle.textContent = 'チャンネルを選択'
-    return
+const DRAG_HANDLE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+  <line x1="8" y1="6" x2="8" y2="18"/>
+  <line x1="16" y1="6" x2="16" y2="18"/>
+</svg>`
+
+const REORDER_DONE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <polyline points="20 6 9 17 4 12"/>
+</svg>`
+
+let channelGroups = []
+let channelUngrouped = []
+let groupsById = {}
+let reorderMode = false
+let lastChannelTree = null
+
+function createReorderHandle() {
+  const handle = document.createElement('span')
+  handle.className = 'reorder-handle'
+  handle.innerHTML = DRAG_HANDLE_ICON
+  return handle
+}
+
+function allChannelNames() {
+  const names = []
+  for (const group of channelGroups) {
+    for (const channel of group.channels || []) names.push(channel.name)
+  }
+  for (const channel of channelUngrouped) names.push(channel.name)
+  return names
+}
+
+function createAddBtn(title, onClick) {
+  const btn = document.createElement('button')
+  btn.type = 'button'
+  btn.className = 'add-channel-btn'
+  btn.title = title
+  btn.setAttribute('aria-label', title)
+  btn.innerHTML = ADD_ICON
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation()
+    onClick()
+  })
+  return btn
+}
+
+function createChannelRow(channel) {
+  channelsByName[channel.name] = channel
+
+  const row = document.createElement('div')
+  row.className = 'channel-row'
+  row.dataset.channel = channel.name
+  if (channel.id) row.dataset.channelId = channel.id
+
+  if (reorderMode) {
+    row.classList.add('channel-row--reorderable')
+    row.draggable = true
+    row.appendChild(createReorderHandle())
   }
 
-  for (const channel of normalized) {
-    channelsByName[channel.name] = channel
+  const btn = document.createElement('button')
+  btn.type = 'button'
+  btn.className = 'channel-item'
 
-    const row = document.createElement('div')
-    row.className = 'channel-row'
-    row.dataset.channel = channel.name
-
-    const btn = document.createElement('button')
-    btn.type = 'button'
-    btn.className = 'channel-item'
-
-    const label = document.createElement('span')
-    label.className = 'channel-item-label'
-    label.textContent = channel.name
-    btn.appendChild(label)
+  const label = document.createElement('span')
+  label.className = 'channel-item-label'
+  label.textContent = channel.name
+  btn.appendChild(label)
+  if (!reorderMode) {
     btn.addEventListener('click', () => selectChannel(channel.name))
+  }
 
+  row.appendChild(btn)
+
+  if (!reorderMode) {
     const settingsBtn = document.createElement('button')
     settingsBtn.type = 'button'
     settingsBtn.className = 'channel-settings-btn'
@@ -224,22 +364,234 @@ function renderChannels(channels, selectName = null) {
       e.stopPropagation()
       openChannelSettings(channel.name)
     })
-
-    row.appendChild(btn)
     row.appendChild(settingsBtn)
-    channelList.appendChild(row)
   }
 
+  return row
+}
+
+function createGroupActions(...buttons) {
+  const actions = document.createElement('div')
+  actions.className = 'channel-group-actions'
+  for (const btn of buttons) actions.appendChild(btn)
+  return actions
+}
+
+function createGroupSection(group) {
+  const section = document.createElement('section')
+  section.className = 'channel-group'
+  section.dataset.groupId = group.id
+
+  const header = document.createElement('div')
+  header.className = 'channel-group-header'
+
+  const label = document.createElement('span')
+  label.className = 'channel-group-label'
+  label.textContent = group.name
+
+  if (reorderMode) {
+    section.classList.add('channel-group--reorderable')
+    section.draggable = true
+    header.appendChild(createReorderHandle())
+    header.appendChild(label)
+  } else {
+    const settingsBtn = document.createElement('button')
+    settingsBtn.type = 'button'
+    settingsBtn.className = 'group-settings-btn'
+    settingsBtn.title = 'グループ設定'
+    settingsBtn.setAttribute('aria-label', `${group.name} の設定`)
+    settingsBtn.innerHTML = CHANNEL_SETTINGS_ICON
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      openGroupSettings(group.id)
+    })
+
+    header.appendChild(label)
+    header.appendChild(createGroupActions(
+      settingsBtn,
+      createAddBtn('チャンネルを追加', () => openCreateChannelDialog(group.id)),
+    ))
+  }
+
+  const list = document.createElement('div')
+  list.className = 'channel-group-channels'
+  for (const channel of group.channels || []) {
+    list.appendChild(createChannelRow(channel))
+  }
+
+  section.appendChild(header)
+  section.appendChild(list)
+  return section
+}
+
+function createUngroupedSection() {
+  const section = document.createElement('section')
+  section.className = 'channel-group channel-group--ungrouped'
+
+  const header = document.createElement('div')
+  header.className = 'channel-group-header'
+
+  const label = document.createElement('span')
+  label.className = 'channel-group-label'
+  label.textContent = '未分類'
+
+  header.appendChild(label)
+  if (!reorderMode) {
+    header.appendChild(createGroupActions(
+      createAddBtn('チャンネルを追加', () => openCreateChannelDialog(null)),
+    ))
+  }
+
+  const list = document.createElement('div')
+  list.className = 'channel-group-channels'
+  for (const channel of channelUngrouped) {
+    list.appendChild(createChannelRow(channel))
+  }
+
+  section.appendChild(header)
+  section.appendChild(list)
+  return section
+}
+
+function normalizeChannelTree(data) {
+  const channels = data?.channels || []
+  if (Array.isArray(data?.groups) && Array.isArray(data?.ungrouped)) {
+    return {
+      groups: data.groups.map(g => ({ ...g, channels: g.channels || [] })),
+      ungrouped: data.ungrouped,
+      channels,
+    }
+  }
+  return { groups: [], ungrouped: channels, channels }
+}
+
+function renderChannelTree(data, selectName = null, options = {}) {
+  const { skipSelect = false } = options
+  const tree = normalizeChannelTree(data)
+  channelList.innerHTML = ''
+  channelsByName = {}
+  groupsById = {}
+  channelGroups = tree.groups
+  channelUngrouped = tree.ungrouped
+
+  for (const group of channelGroups) {
+    groupsById[group.id] = group
+    for (const channel of group.channels || []) {
+      channelsByName[channel.name] = channel
+    }
+  }
+  for (const channel of channelUngrouped) {
+    channelsByName[channel.name] = channel
+  }
+
+  const names = allChannelNames()
+
+  if (!channelGroups.length && !names.length) {
+    channelList.innerHTML = '<div class="loading-text">グループを作成してチャンネルを追加</div>'
+    activeChannel = null
+    channelTitle.textContent = 'チャンネルを選択'
+    return
+  }
+
+  for (const group of channelGroups) {
+    channelList.appendChild(createGroupSection(group))
+  }
+  channelList.appendChild(createUngroupedSection())
+
+  if (reorderMode) {
+    SignalyReorder.setActive(true)
+  }
+
+  if (skipSelect) return
+
   const target = selectName
-    ?? (activeChannel && names.includes(activeChannel) ? null : names[0])
+    ?? (activeChannel && names.includes(activeChannel) ? null : names[0] ?? null)
 
   if (target) {
     selectChannel(target)
   } else if (activeChannel) {
     setActiveChannelRow(activeChannel)
-    updateBadge(activeChannel)
+    updateAllBadges()
   }
 }
+
+function currentTreeSnapshot() {
+  return {
+    groups: channelGroups,
+    ungrouped: channelUngrouped,
+    channels: Object.values(channelsByName),
+  }
+}
+
+function updateReorderModeBtn() {
+  const btn = document.getElementById('reorder-mode-btn')
+  const hint = document.getElementById('reorder-hint')
+  if (!btn) return
+  if (reorderMode) {
+    btn.title = '並び替えを完了'
+    btn.setAttribute('aria-label', '並び替えを完了')
+    btn.innerHTML = REORDER_DONE_ICON
+    if (hint) hint.hidden = false
+  } else {
+    btn.title = '並び替え'
+    btn.setAttribute('aria-label', '並び替え')
+    btn.innerHTML = DRAG_HANDLE_ICON
+    if (hint) hint.hidden = true
+  }
+}
+
+function enterReorderMode() {
+  if (reorderMode) return
+  reorderMode = true
+  lastChannelTree = currentTreeSnapshot()
+  renderChannelTree(lastChannelTree, null, { skipSelect: true })
+  updateReorderModeBtn()
+}
+
+async function exitReorderMode() {
+  if (!reorderMode) return
+
+  const btn = document.getElementById('reorder-mode-btn')
+  const layout = SignalyReorder.collectLayout()
+  if (btn) btn.disabled = true
+
+  try {
+    const res = await fetch(apiUrl('api/channels/layout'), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(layout),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      alert(parseApiError(data, '並び替えの保存に失敗しました'))
+      return
+    }
+  } catch {
+    alert('ネットワークエラーが発生しました')
+    return
+  } finally {
+    if (btn) btn.disabled = false
+  }
+
+  reorderMode = false
+  SignalyReorder.setActive(false)
+  updateReorderModeBtn()
+  await refreshChannels(activeChannel)
+}
+
+SignalyReorder.init(channelList)
+
+const reorderModeBtn = document.getElementById('reorder-mode-btn')
+
+reorderModeBtn?.addEventListener('click', (e) => {
+  e.preventDefault()
+  e.stopPropagation()
+  if (reorderMode) {
+    void exitReorderMode()
+  } else {
+    enterReorderMode()
+  }
+})
 
 function setActiveChannelRow(channelName) {
   channelList.querySelectorAll('.channel-row').forEach(row => {
@@ -255,6 +607,7 @@ function updateBadge(channelName) {
   if (!row) return
   const btn = row.querySelector('.channel-item')
   const count = unread[channelName] || 0
+  btn.classList.toggle('channel-item--unread', count > 0 && channelName !== activeChannel)
   let badge = btn.querySelector('.badge')
   if (count > 0) {
     if (!badge) {
@@ -268,6 +621,11 @@ function updateBadge(channelName) {
   }
 }
 
+function updateAllBadges() {
+  for (const name of allChannelNames()) updateBadge(name)
+  updateDocumentTitle()
+}
+
 // ── Channel selection ─────────────────────────────────────────────────────────
 
 async function selectChannel(name) {
@@ -275,13 +633,15 @@ async function selectChannel(name) {
 
   activeChannel = name
   unread[name] = 0
+  pendingNewCount = 0
+  if (newNotifBanner) newNotifBanner.hidden = true
 
   // UI 更新
   setActiveChannelRow(name)
-  updateBadge(name)
+  updateAllBadges()
   channelTitle.textContent = `# ${name}`
   feed.innerHTML = ''
-  emptyState.hidden = true
+  if (emptyState) emptyState.hidden = true
   seenIds.clear()
   setStatus('connecting')
 
@@ -298,15 +658,20 @@ async function loadHistory(channelName) {
     if (!res.ok) return
     const { logs } = await res.json()
     if (!logs.length) {
-      emptyState.hidden = false
+      markChannelRead(channelName)
+      if (emptyState) emptyState.hidden = false
       return
     }
-    // 古い順に並んでいるので reverse して新しい順に挿入
-    for (const entry of [...logs].reverse()) {
+    let newestTs = 0
+    // API は新しい順。appendChild で先頭が最新になる
+    for (const entry of logs) {
       if (seenIds.has(entry.id)) continue
       seenIds.add(entry.id)
       feed.appendChild(createCard(entry))
+      const ts = parseTimestamp(entry.timestamp)
+      if (ts > newestTs) newestTs = ts
     }
+    markChannelRead(channelName, newestTs || Date.now())
     // 最新が上になるよう先頭にスクロール
     feed.scrollTop = 0
   } catch {
@@ -323,19 +688,70 @@ function stopPolling() {
   }
 }
 
+function stopUnreadPolling() {
+  if (unreadPollTimer) {
+    clearInterval(unreadPollTimer)
+    unreadPollTimer = null
+  }
+}
+
+function startUnreadPolling() {
+  stopUnreadPolling()
+  pollUnreadChannels()
+  unreadPollTimer = setInterval(pollUnreadChannels, UNREAD_POLL_MS)
+}
+
+async function pollUnreadChannels() {
+  const names = allChannelNames()
+  if (!names.length) return
+
+  let changed = false
+  await Promise.all(names.map(async (name) => {
+    if (name === activeChannel) return
+    try {
+      const res = await fetch(apiUrl(`api/history/${name}?limit=50`))
+      if (!res.ok) return
+      const { logs } = await res.json()
+
+      if (lastReadAt[name] === undefined) {
+        if (logs.length) {
+          const newest = Math.max(...logs.map(e => parseTimestamp(e.timestamp)))
+          lastReadAt[name] = newest
+          saveLastReadAt()
+        }
+        if (unread[name] !== 0) {
+          unread[name] = 0
+          changed = true
+        }
+        return
+      }
+
+      const since = lastReadAt[name]
+      const count = logs.filter(e => parseTimestamp(e.timestamp) > since).length
+      if (unread[name] !== count) {
+        unread[name] = count
+        changed = true
+      }
+    } catch {
+      // サイレントに無視
+    }
+  }))
+
+  if (changed) updateAllBadges()
+}
+
 async function pollNewEntries(channelName) {
   if (activeChannel !== channelName) return
   try {
     const res = await fetch(apiUrl(`api/history/${channelName}?limit=30`))
     if (!res.ok) return
     const { logs } = await res.json()
+    const fresh = logs.filter(e => !seenIds.has(e.id) && activeChannel === e.channel)
     let added = false
-    for (const entry of [...logs].reverse()) {
-      if (seenIds.has(entry.id)) continue
-      if (activeChannel === entry.channel) {
-        prependCard(entry)
-        added = true
-      }
+    // prepend は先頭挿入なので古い順に処理して最新が上に来るようにする
+    for (const entry of [...fresh].reverse()) {
+      prependCard(entry, { isNew: true })
+      added = true
     }
     if (added) feed.scrollTop = 0
   } catch {
@@ -376,10 +792,12 @@ function connectSSE(channelName) {
     }
 
     if (activeChannel === entry.channel) {
-      prependCard(entry)
+      prependCard(entry, { isNew: true })
+      markChannelRead(entry.channel, parseTimestamp(entry.timestamp))
     } else {
       unread[entry.channel] = (unread[entry.channel] || 0) + 1
       updateBadge(entry.channel)
+      updateDocumentTitle()
     }
 
     // デスクトップ通知
@@ -512,9 +930,66 @@ SignalySettings.init({
   },
 })
 
+// ── Create group ──────────────────────────────────────────────────────────────
+
+const addGroupBtn = document.getElementById('add-group-btn')
+const createGroupDialog = document.getElementById('create-group-dialog')
+const createGroupForm = document.getElementById('create-group-form')
+const createGroupName = document.getElementById('create-group-name')
+const createGroupError = document.getElementById('create-group-error')
+const createGroupClose = document.getElementById('create-group-close')
+
+function openCreateGroupDialog() {
+  createGroupName.value = ''
+  createGroupError.hidden = true
+  createGroupError.textContent = ''
+  SignalyDialog.open(createGroupDialog, { focusEl: createGroupName })
+}
+
+function closeCreateGroupDialog() {
+  SignalyDialog.close(createGroupDialog)
+}
+
+addGroupBtn?.addEventListener('click', openCreateGroupDialog)
+createGroupClose?.addEventListener('click', closeCreateGroupDialog)
+createGroupDialog?.addEventListener('click', (e) => {
+  if (e.target === createGroupDialog) closeCreateGroupDialog()
+})
+
+createGroupForm?.addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const name = createGroupName.value.trim()
+  if (!name) return
+
+  createGroupError.hidden = true
+  const submitBtn = createGroupForm.querySelector('.create-channel-submit')
+  submitBtn.disabled = true
+
+  try {
+    const res = await fetch(apiUrl('api/groups'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      createGroupError.textContent = parseApiError(data, '作成に失敗しました')
+      createGroupError.hidden = false
+      return
+    }
+    closeCreateGroupDialog()
+    await refreshChannels()
+  } catch {
+    createGroupError.textContent = 'ネットワークエラーが発生しました'
+    createGroupError.hidden = false
+  } finally {
+    submitBtn.disabled = false
+  }
+})
+
 // ── Create channel ────────────────────────────────────────────────────────────
 
-const addChannelBtn = document.getElementById('add-channel-btn')
+let createChannelGroupId = null
 const createChannelDialog = document.getElementById('create-channel-dialog')
 const createChannelForm = document.getElementById('create-channel-form')
 const createChannelName = document.getElementById('create-channel-name')
@@ -545,19 +1020,22 @@ function resetCreateChannelDialog() {
   createChannelName.value = ''
   createChannelError.hidden = true
   createChannelError.textContent = ''
+  createChannelGroupId = null
   hideWebhookSection(createChannelRevealWebhook, createChannelWebhookSection, createChannelCopy)
 }
 
-function openCreateChannelDialog() {
+function openCreateChannelDialog(groupId = null) {
   resetCreateChannelDialog()
+  createChannelGroupId = groupId
+  if (groupId && groupsById[groupId]) {
+    createChannelTitle.textContent = `${groupsById[groupId].name} にチャンネルを作成`
+  }
   SignalyDialog.open(createChannelDialog, { focusEl: createChannelName })
 }
 
 function closeCreateChannelDialog() {
   SignalyDialog.close(createChannelDialog)
 }
-
-addChannelBtn?.addEventListener('click', openCreateChannelDialog)
 
 createChannelClose?.addEventListener('click', closeCreateChannelDialog)
 
@@ -577,10 +1055,13 @@ createChannelForm?.addEventListener('submit', async (e) => {
   submitBtn.disabled = true
 
   try {
+    const payload = { name }
+    if (createChannelGroupId) payload.group_id = createChannelGroupId
+
     const res = await fetch(apiUrl('api/channels'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(payload),
     })
     const data = await res.json().catch(() => ({}))
 
@@ -605,8 +1086,8 @@ createChannelForm?.addEventListener('submit', async (e) => {
 
     const listRes = await fetch(apiUrl('api/channels'))
     if (listRes.ok) {
-      const { channels } = await listRes.json()
-      renderChannels(channels, data.name)
+      const tree = await listRes.json()
+      renderChannelTree(tree, data.name)
     }
   } catch {
     createChannelError.textContent = 'ネットワークエラーが発生しました'
@@ -632,6 +1113,169 @@ createChannelRevealWebhook?.addEventListener('click', () => {
   createChannelRevealWebhook.hidden = true
 })
 
+function parseApiError(data, fallback) {
+  let message = data?.detail
+  if (Array.isArray(message)) {
+    message = message.map(e => e.msg).join(', ')
+  } else if (typeof message !== 'string') {
+    message = fallback
+  }
+  return message
+}
+
+async function refreshChannels(selectName = null) {
+  const res = await fetch(apiUrl('api/channels'))
+  if (!res.ok) return false
+  const data = await res.json()
+  renderChannelTree(data, selectName)
+  return true
+}
+
+// ── Group settings ────────────────────────────────────────────────────────────
+
+const groupSettingsDialog = document.getElementById('group-settings-dialog')
+const groupSettingsClose = document.getElementById('group-settings-close')
+const groupSettingsRename = document.getElementById('group-settings-rename')
+const groupSettingsRenameBtn = document.getElementById('group-settings-rename-btn')
+const groupSettingsError = document.getElementById('group-settings-error')
+const groupSettingsDelete = document.getElementById('group-settings-delete')
+const groupDeleteDialog = document.getElementById('group-delete-dialog')
+const groupDeleteName = document.getElementById('group-delete-name')
+const groupDeleteError = document.getElementById('group-delete-error')
+const groupDeleteCancel = document.getElementById('group-delete-cancel')
+const groupDeleteConfirm = document.getElementById('group-delete-confirm')
+
+let groupSettingsId = null
+let groupSettingsOriginalName = null
+
+function resetGroupSettingsDialog() {
+  groupSettingsId = null
+  groupSettingsOriginalName = null
+  groupSettingsError.hidden = true
+  groupSettingsError.textContent = ''
+  groupSettingsRenameBtn.disabled = false
+  groupSettingsDelete.disabled = false
+}
+
+function openGroupSettings(groupId) {
+  const group = groupsById[groupId]
+  if (!group) return
+
+  groupSettingsId = groupId
+  groupSettingsOriginalName = group.name
+  groupSettingsRename.value = group.name
+  groupSettingsError.hidden = true
+  closeSidebar()
+  SignalyDialog.open(groupSettingsDialog, { focusEl: groupSettingsRename })
+  groupSettingsRename?.select()
+}
+
+function closeGroupSettingsDialog() {
+  SignalyDialog.close(groupSettingsDialog)
+  resetGroupSettingsDialog()
+}
+
+groupSettingsClose?.addEventListener('click', closeGroupSettingsDialog)
+
+groupSettingsDialog?.addEventListener('click', (e) => {
+  if (e.target === groupSettingsDialog && !groupDeleteDialog?.classList.contains('open')) {
+    closeGroupSettingsDialog()
+  }
+})
+
+function openGroupDeleteDialog() {
+  if (!groupSettingsOriginalName) return
+  groupDeleteName.textContent = groupSettingsOriginalName
+  groupDeleteError.hidden = true
+  groupDeleteError.textContent = ''
+  groupDeleteConfirm.disabled = false
+  groupDeleteCancel.disabled = false
+  SignalyDialog.open(groupDeleteDialog, { focusEl: groupDeleteCancel })
+}
+
+function closeGroupDeleteDialog() {
+  SignalyDialog.close(groupDeleteDialog)
+  groupDeleteError.hidden = true
+  groupDeleteError.textContent = ''
+  groupDeleteConfirm.disabled = false
+  groupDeleteCancel.disabled = false
+}
+
+groupSettingsDelete?.addEventListener('click', openGroupDeleteDialog)
+groupDeleteCancel?.addEventListener('click', closeGroupDeleteDialog)
+groupDeleteDialog?.addEventListener('click', (e) => {
+  if (e.target === groupDeleteDialog) closeGroupDeleteDialog()
+})
+
+groupSettingsRenameBtn?.addEventListener('click', async () => {
+  const newName = groupSettingsRename.value.trim()
+  if (!newName || !groupSettingsId) return
+  if (newName === groupSettingsOriginalName) return
+
+  groupSettingsError.hidden = true
+  groupSettingsRenameBtn.disabled = true
+
+  try {
+    const res = await fetch(apiUrl(`api/groups/${groupSettingsId}`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      groupSettingsError.textContent = parseApiError(data, '変更に失敗しました')
+      groupSettingsError.hidden = false
+      return
+    }
+
+    closeGroupSettingsDialog()
+    await refreshChannels(activeChannel)
+  } catch {
+    groupSettingsError.textContent = 'ネットワークエラーが発生しました'
+    groupSettingsError.hidden = false
+  } finally {
+    groupSettingsRenameBtn.disabled = false
+  }
+})
+
+groupDeleteConfirm?.addEventListener('click', async () => {
+  if (!groupSettingsId) return
+
+  groupDeleteError.hidden = true
+  groupDeleteConfirm.disabled = true
+  groupDeleteCancel.disabled = true
+
+  try {
+    const res = await fetch(apiUrl(`api/groups/${groupSettingsId}`), { method: 'DELETE' })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      groupDeleteError.textContent = parseApiError(data, '削除に失敗しました')
+      groupDeleteError.hidden = false
+      return
+    }
+
+    closeGroupDeleteDialog()
+    closeGroupSettingsDialog()
+    await refreshChannels(activeChannel)
+  } catch {
+    groupDeleteError.textContent = 'ネットワークエラーが発生しました'
+    groupDeleteError.hidden = false
+  } finally {
+    groupDeleteConfirm.disabled = false
+    groupDeleteCancel.disabled = false
+  }
+})
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && groupSettingsDialog?.classList.contains('open')) {
+    if (groupDeleteDialog?.classList.contains('open')) {
+      closeGroupDeleteDialog()
+    } else {
+      closeGroupSettingsDialog()
+    }
+  }
+})
+
 // ── Channel settings ──────────────────────────────────────────────────────────
 
 const channelSettingsDialog = document.getElementById('channel-settings-dialog')
@@ -652,24 +1296,6 @@ const channelDeleteConfirm = document.getElementById('channel-delete-confirm')
 
 let channelSettingsId = null
 let channelSettingsOriginalName = null
-
-function parseApiError(data, fallback) {
-  let message = data?.detail
-  if (Array.isArray(message)) {
-    message = message.map(e => e.msg).join(', ')
-  } else if (typeof message !== 'string') {
-    message = fallback
-  }
-  return message
-}
-
-async function refreshChannels(selectName = null) {
-  const res = await fetch(apiUrl('api/channels'))
-  if (!res.ok) return false
-  const { channels } = await res.json()
-  renderChannels(channels, selectName)
-  return true
-}
 
 function resetChannelSettingsDialog() {
   channelSettingsId = null
@@ -779,6 +1405,11 @@ channelSettingsRenameBtn?.addEventListener('click', async () => {
       unread[newName] = (unread[newName] || 0) + unread[oldName]
       delete unread[oldName]
     }
+    if (lastReadAt[oldName]) {
+      lastReadAt[newName] = Math.max(lastReadAt[newName] || 0, lastReadAt[oldName])
+      delete lastReadAt[oldName]
+      saveLastReadAt()
+    }
 
     channelSettingsOriginalName = newName
     channelSettingsId = data.id
@@ -828,6 +1459,8 @@ channelDeleteConfirm?.addEventListener('click', async () => {
 
     const deletedName = channelSettingsOriginalName
     delete unread[deletedName]
+    delete lastReadAt[deletedName]
+    saveLastReadAt()
     closeChannelDeleteDialog()
     closeChannelSettingsDialog()
 
@@ -888,10 +1521,12 @@ async function init() {
       return
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const { channels } = await res.json()
+    const data = await res.json()
     SignalySettings.showAuthenticated()
-    addChannelBtn.hidden = false
-    renderChannels(channels, urlChannel)
+    if (addGroupBtn) addGroupBtn.hidden = false
+    if (reorderModeBtn) reorderModeBtn.hidden = false
+    renderChannelTree(data, urlChannel)
+    startUnreadPolling()
     try {
       await syncPushSubscription()
     } catch {
@@ -904,5 +1539,18 @@ async function init() {
     channelList.innerHTML = `<div class="loading-text">読み込み失敗 (${msg})</div>`
   }
 }
+
+feed?.addEventListener('scroll', () => {
+  if (feed.scrollTop <= 40 && pendingNewCount > 0) {
+    dismissNewHighlights()
+  } else {
+    updateNewNotifBanner()
+  }
+})
+
+newNotifBanner?.addEventListener('click', () => {
+  feed.scrollTo({ top: 0, behavior: 'smooth' })
+  dismissNewHighlights()
+})
 
 init()

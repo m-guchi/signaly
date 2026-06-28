@@ -7,7 +7,7 @@
   <link rel="manifest" href="manifest.json?v=0.2.0">
   <link rel="icon" href="icon.svg?v=0.2.0" type="image/svg+xml">
   <link rel="apple-touch-icon" href="apple-touch-icon.png?v=0.2.0">
-  <link rel="stylesheet" href="style.css?v=0.2.4">
+  <link rel="stylesheet" href="style.css?v=0.2.7">
   <meta name="theme-color" content="#000000">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -35,14 +35,23 @@
         </div>
       </div>
       <div class="channel-section-header">
-        <span class="channel-section-label">チャンネル</span>
-        <button id="add-channel-btn" class="add-channel-btn" type="button" title="チャンネルを作成" aria-label="チャンネルを作成" hidden>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-        </button>
+        <span class="channel-section-label" id="channel-section-label">グループ</span>
+        <div class="channel-section-actions">
+          <button id="reorder-mode-btn" class="add-channel-btn" type="button" title="並び替え" aria-label="並び替え" hidden>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+              <line x1="8" y1="6" x2="8" y2="18"/>
+              <line x1="16" y1="6" x2="16" y2="18"/>
+            </svg>
+          </button>
+          <button id="add-group-btn" class="add-channel-btn" type="button" title="グループを作成" aria-label="グループを作成" hidden>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
+        </div>
       </div>
+      <p id="reorder-hint" class="reorder-hint" hidden>ドラッグで並び替え。完了は ✓ を押してください。</p>
       <nav id="channel-list" aria-label="チャンネル一覧">
         <div class="loading-text">読み込み中…</div>
       </nav>
@@ -61,8 +70,68 @@
         <span id="status" class="status status--disconnected" title="接続状態">●</span>
       </header>
       <div id="feed" role="log" aria-live="polite" aria-relevant="additions"></div>
+      <button id="new-notif-banner" type="button" class="new-notif-banner" hidden>新着</button>
       <div id="empty-state" class="empty-state" hidden>通知はまだありません</div>
     </main>
+  </div>
+
+  <div id="create-group-dialog" class="changelog-dialog dialog-centered" role="dialog" aria-modal="true" aria-label="グループを作成">
+    <div class="changelog-panel create-channel-panel">
+      <div class="changelog-header">
+        <h2 class="changelog-title">グループを作成</h2>
+        <button id="create-group-close" class="changelog-close" aria-label="閉じる">✕</button>
+      </div>
+      <form id="create-group-form" class="create-channel-body">
+        <label class="create-channel-label" for="create-group-name">グループ名</label>
+        <input id="create-group-name" class="create-channel-input" type="text" maxlength="100" placeholder="仕事" required autocomplete="off">
+        <p id="create-group-error" class="create-channel-error" hidden></p>
+        <button type="submit" class="create-channel-submit">作成</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="group-settings-dialog" class="changelog-dialog dialog-centered" role="dialog" aria-modal="true" aria-label="グループ設定">
+    <div class="changelog-panel create-channel-panel">
+      <div class="changelog-header">
+        <h2 class="changelog-title" id="group-settings-title">グループ設定</h2>
+        <button id="group-settings-close" class="changelog-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="create-channel-body">
+        <label class="create-channel-label" for="group-settings-rename">グループ名</label>
+        <div class="create-channel-webhook-row">
+          <input id="group-settings-rename" class="create-channel-input" type="text" maxlength="100" autocomplete="off">
+          <button id="group-settings-rename-btn" type="button" class="create-channel-copy">変更</button>
+        </div>
+        <p id="group-settings-error" class="create-channel-error" hidden></p>
+        <div class="channel-settings-actions">
+          <button id="group-settings-delete" type="button" class="create-channel-copy channel-delete-btn">グループを削除</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="group-delete-dialog" class="changelog-dialog dialog-centered confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="group-delete-title" aria-describedby="group-delete-desc">
+    <div class="changelog-panel create-channel-panel confirm-dialog-panel">
+      <div class="confirm-dialog-icon" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </div>
+      <h2 class="confirm-dialog-title" id="group-delete-title">グループを削除しますか？</h2>
+      <div class="create-channel-body confirm-dialog-body">
+        <p class="confirm-dialog-message" id="group-delete-desc">
+          グループ <strong id="group-delete-name"></strong> を削除します。チャンネルは未分類に移動します。
+        </p>
+        <p class="create-channel-hint">チャンネル自体は削除されません。</p>
+        <p id="group-delete-error" class="create-channel-error" hidden></p>
+        <div class="confirm-dialog-actions">
+          <button id="group-delete-cancel" type="button" class="create-channel-copy">キャンセル</button>
+          <button id="group-delete-confirm" type="button" class="create-channel-submit confirm-delete-btn">削除する</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="create-channel-dialog" class="changelog-dialog dialog-centered" role="dialog" aria-modal="true" aria-label="チャンネルを作成">
@@ -172,7 +241,6 @@
             <button id="notif-enable-btn" type="button" class="create-channel-submit">通知を許可する</button>
           </div>
           <div id="notif-push-block" class="notif-push-block" hidden>
-            <p class="push-action-title">Push通知を</p>
             <div class="settings-btn-group">
               <button id="notif-reregister-btn" type="button" class="create-channel-submit notif-secondary-btn" hidden>再登録する</button>
               <button id="notif-disable-btn" type="button" class="create-channel-submit settings-danger-btn" hidden>無効にする</button>
@@ -248,7 +316,8 @@
 
   <script src="changelog.js?v=0.2.0"></script>
   <script src="dialog.js?v=0.2.2"></script>
-  <script src="settings.js?v=0.2.4"></script>
-  <script src="app.js?v=0.2.4"></script>
+  <script src="reorder.js?v=0.2.7"></script>
+  <script src="settings.js?v=0.2.5"></script>
+  <script src="app.js?v=0.2.7"></script>
 </body>
 </html>

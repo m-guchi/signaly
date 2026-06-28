@@ -5,6 +5,7 @@ function apiUrl(path) {
 }
 
 let channels = []
+let channelTree = { groups: [], ungrouped: [] }
 let activeChannel = null
 
 const channelList = document.getElementById('channel-list')
@@ -93,7 +94,7 @@ function hideWebhookUrl() {
 function renderChannelList(selectName = null) {
   channelList.innerHTML = ''
 
-  if (!channels.length) {
+  if (!channels.length && !channelTree.groups.length) {
     channelList.innerHTML = '<div class="loading-text">チャンネルなし</div>'
     activeChannel = null
     channelTitle.textContent = 'チャンネルを選択'
@@ -102,21 +103,47 @@ function renderChannelList(selectName = null) {
     return
   }
 
-  for (const channel of channels) {
-    const btn = document.createElement('button')
-    btn.className = 'channel-item'
-    btn.dataset.channel = channel.name
-    btn.textContent = channel.name
-    btn.addEventListener('click', () => selectChannel(channel.name))
-    channelList.appendChild(btn)
+  for (const group of channelTree.groups) {
+    const header = document.createElement('div')
+    header.className = 'channel-group-header'
+    const label = document.createElement('span')
+    label.className = 'channel-group-label'
+    label.textContent = group.name
+    header.appendChild(label)
+    channelList.appendChild(header)
+    for (const channel of group.channels) {
+      channelList.appendChild(createChannelButton(channel))
+    }
+  }
+
+  if (channelTree.ungrouped.length) {
+    const header = document.createElement('div')
+    header.className = 'channel-group-header'
+    const label = document.createElement('span')
+    label.className = 'channel-group-label'
+    label.textContent = '未分類'
+    header.appendChild(label)
+    channelList.appendChild(header)
+    for (const channel of channelTree.ungrouped) {
+      channelList.appendChild(createChannelButton(channel))
+    }
   }
 
   const queryChannel = selectName ?? channelFromQuery()
   const target = queryChannel && channels.some(c => c.name === queryChannel)
     ? queryChannel
-    : channels[0].name
+    : channels[0]?.name
 
-  selectChannel(target)
+  if (target) selectChannel(target)
+}
+
+function createChannelButton(channel) {
+  const btn = document.createElement('button')
+  btn.className = 'channel-item'
+  btn.dataset.channel = channel.name
+  btn.textContent = channel.name
+  btn.addEventListener('click', () => selectChannel(channel.name))
+  return btn
 }
 
 function selectChannel(name) {
@@ -256,7 +283,8 @@ async function init() {
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
-    channels = data.channels
+    channels = data.channels || []
+    channelTree = { groups: data.groups || [], ungrouped: data.ungrouped || [] }
     SignalySettings.showAuthenticated()
     renderChannelList()
     loadApiKeys()

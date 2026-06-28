@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import Column, DateTime, String, Text, create_engine, text
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session
 
 _DB_USER = os.environ.get("DB_USER", "user")
@@ -19,11 +19,28 @@ class Base(DeclarativeBase):
     pass
 
 
+class ChannelGroup(Base):
+    __tablename__ = "channel_groups"
+
+    id = Column(String(36), primary_key=True)
+    name = Column(String(100), nullable=False, unique=True)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class Channel(Base):
     __tablename__ = "channels"
 
     id = Column(String(36), primary_key=True)
     name = Column(String(100), nullable=False, unique=True)
+    group_id = Column(
+        String(36),
+        ForeignKey("channel_groups.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    sort_order = Column(Integer, nullable=False, default=0)
     webhook_secret_hash = Column(String(64), nullable=True)
     webhook_secret_enc = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False)
@@ -80,6 +97,8 @@ def _migrate_add_columns() -> None:
     channel_columns = [
         "webhook_secret_hash VARCHAR(64) NULL",
         "webhook_secret_enc TEXT NULL",
+        "group_id VARCHAR(36) NULL",
+        "sort_order INT NOT NULL DEFAULT 0",
     ]
     with engine.connect() as conn:
         for col_def in notification_columns:

@@ -231,7 +231,7 @@ const SignalySettings = {
     const disableBtn = document.getElementById('notif-disable-btn')
     const osHint = document.getElementById('notif-os-hint')
     const osHintText = document.getElementById('notif-os-hint-text')
-    if (!permEl || !pushEl || !messageEl || !enableBtn || !pushBlock || !reregisterBtn || !disableBtn) return
+  if (!permEl || !pushEl || !messageEl || !enableBtn || !pushBlock || !reregisterBtn || !disableBtn || !osHint || !osHintText) return
 
     const permission = Notification.permission
     const canPush = this.notifications?.pushSupported?.() ?? false
