@@ -1,8 +1,16 @@
 'use strict'
 
-const APP_VERSION = '1.0.7'
+const APP_VERSION = '1.0.8'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.0.8',
+    date: '2026-06-29',
+    changes: [
+      'iOS PWA の初回起動で画面が空白になる問題を修正',
+      'Google ログイン成功時に Webhook へ通知',
+    ],
+  },
   {
     version: '1.0.7',
     date: '2026-06-29',
