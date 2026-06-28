@@ -3,16 +3,16 @@
 # 実行: op run --env-file=.env.tpl -- bash deploy/setup.sh
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/apps/signaly}"
+TARGET_DIR="${TARGET_DIR:-/apps/signaly}"
 
 install_systemd_service() {
-  sed "s|{{APP_DIR}}|${APP_DIR}|g" \
-    "${APP_DIR}/deploy/signaly.service.template" | sudo tee /etc/systemd/system/signaly.service > /dev/null
+  sed "s|{{TARGET_DIR}}|${TARGET_DIR}|g" \
+    "${TARGET_DIR}/deploy/signaly.service.template" | sudo tee /etc/systemd/system/signaly.service > /dev/null
 }
 
-echo "==> ディレクトリ作成 (${APP_DIR})"
-sudo mkdir -p "$APP_DIR"
-sudo chown "$USER":"$USER" "$APP_DIR"
+echo "==> ディレクトリ作成 (${TARGET_DIR})"
+sudo mkdir -p "$TARGET_DIR"
+sudo chown "$USER":"$USER" "$TARGET_DIR"
 
 echo "==> ファイルをコピー"
 rsync -az --delete \
@@ -20,16 +20,16 @@ rsync -az --delete \
   --exclude='.venv' \
   --exclude='backend/data/' \
   --exclude='backend/channels.json' \
-  ./ "$APP_DIR/"
+  ./ "$TARGET_DIR/"
 
 echo "==> Python 仮想環境を作成"
-python3 -m venv "$APP_DIR/.venv"
-"$APP_DIR/.venv/bin/pip" install --quiet --upgrade pip
-"$APP_DIR/.venv/bin/pip" install --quiet -r "$APP_DIR/backend/requirements.txt"
+python3 -m venv "$TARGET_DIR/.venv"
+"$TARGET_DIR/.venv/bin/pip" install --quiet --upgrade pip
+"$TARGET_DIR/.venv/bin/pip" install --quiet -r "$TARGET_DIR/backend/requirements.txt"
 
 echo "==> channels.json が存在しない場合は例をコピー"
-if [[ ! -f "$APP_DIR/backend/channels.json" ]]; then
-  cp "$APP_DIR/channels.example.json" "$APP_DIR/backend/channels.json"
+if [[ ! -f "$TARGET_DIR/backend/channels.json" ]]; then
+  cp "$TARGET_DIR/channels.example.json" "$TARGET_DIR/backend/channels.json"
   echo "  !! backend/channels.json を編集してチャンネルIDを設定してください"
 fi
 

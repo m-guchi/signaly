@@ -1,0 +1,60 @@
+name: Release
+
+# 手動タグ push 用フォールバック。deploy.yml が GITHUB_TOKEN で push したタグは
+# 他 workflow を起動しないため、通常デプロイでは deploy 内の release ジョブが Release を作成する。
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect prerelease
+        id: meta
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: release
+    if: always()
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 1Password からシークレットを読み込む
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          OP_ENV_FILE: .github/deploy.env.tpl
+
+      - name: Discord に通知
+        env:
+          DISCORD_WEBHOOK_URL: ${{ env.DISCORD_CI_WEBHOOK_URL }}
+          NOTIFY_APP:    Signaly
+          NOTIFY_KIND:   リリース
+          NOTIFY_STATUS: ${{ needs.release.result }}
+          NOTIFY_JOB:    release
+        run: bash .github/scripts/discord-notify.sh

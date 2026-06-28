@@ -104,6 +104,8 @@ bash scripts/portforward.sh
 .venv/bin/python -m unittest discover -s backend -p 'test_*.py'
 ```
 
+GitHub Actions の `ci.yml` も同じテストを `develop` への push と PR（`main` / `develop` 向け）で実行します。
+
 ## 環境変数
 
 | 変数 | 用途 |
@@ -130,13 +132,24 @@ Webhook URL はログイン後の **Webhook URL** 画面で確認できます。
 
 ## デプロイ
 
-`main` ブランチへの push で GitHub Actions が VPS へ rsync デプロイします（[DESIGN_GUIDE](../_docs/DESIGN_GUIDE.md) 参照）。
+`main` ブランチへの push（または Actions から手動実行）で GitHub Actions が VPS へ rsync デプロイします（[DESIGN_GUIDE](../_docs/DESIGN_GUIDE.md) 参照）。
+
+```
+main へ push / workflow_dispatch
+    ├─ tag      … version.json から v{version} タグを作成
+    ├─ deploy   … rsync → systemd restart
+    ├─ release  … GitHub Release を自動生成
+    ├─ notify   … デプロイ結果を Discord へ通知
+    └─ notify-release … リリース結果を Discord へ通知
+```
+
+**注意:** 同じバージョンのタグが別コミットに既にある場合、workflow はエラーで止まります。`python scripts/bump_version.py` で version を上げてから `main` へマージしてください。
 
 ### 1Password
 
 | アイテム | フィールド | 用途 |
 |---------|-----------|------|
-| `signaly` | `target-dir` | デプロイ先パス（例: `/apps/signaly`） |
+| `signaly` | `target-dir` | デプロイ先パス（`TARGET_DIR`、例: `/apps/signaly`） |
 | `signaly` | `db-name` 他 | アプリ固有シークレット |
 | `DB` | `db-user` 等 | MySQL 共通接続情報 |
 | `Server` | `host` / `username` / `ssh-port` | SSH 接続 |
