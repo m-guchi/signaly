@@ -153,10 +153,6 @@ def _build_test_payload() -> str:
     )
 
 
-def _vapid_private_key_pem() -> str:
-    return _pem_bytes().decode()
-
-
 def _vapid_claims_for_endpoint(endpoint: str) -> Dict[str, str]:
     parsed = urlparse(endpoint)
     return {
@@ -183,7 +179,7 @@ def _push_error_hint(exc: WebPushException) -> Optional[str]:
 
 
 def _deliver_push_result(
-    sub: Dict[str, str], payload: str, vapid_pem: str
+    sub: Dict[str, str], payload: str, vapid: Vapid02
 ) -> Tuple[bool, Optional[int], Optional[str]]:
     subscription_info = {
         "endpoint": sub["endpoint"],
@@ -193,7 +189,7 @@ def _deliver_push_result(
         webpush(
             subscription_info=subscription_info,
             data=payload,
-            vapid_private_key=vapid_pem,
+            vapid_private_key=vapid,
             vapid_claims=dict(_vapid_claims_for_endpoint(sub["endpoint"])),
             ttl=60,
         )
@@ -216,8 +212,8 @@ def _deliver_push_result(
         return False, None, str(exc)[:120]
 
 
-def _deliver_push(sub: Dict[str, str], payload: str, vapid_pem: str) -> bool:
-    return _deliver_push_result(sub, payload, vapid_pem)[0]
+def _deliver_push(sub: Dict[str, str], payload: str, vapid: Vapid02) -> bool:
+    return _deliver_push_result(sub, payload, vapid)[0]
 
 
 def send_test_push_to_user(email: str, endpoint: Optional[str] = None) -> Dict[str, Any]:
@@ -232,14 +228,14 @@ def send_test_push_to_user(email: str, endpoint: Optional[str] = None) -> Dict[s
         return {"sent": 0, "failed": 0, "error": "no_subscription"}
 
     payload = _build_test_payload()
-    vapid_pem = _vapid_private_key_pem()
+    vapid = _load_vapid()
     sent = 0
     failed = 0
     removed = 0
     last_status: Optional[int] = None
     last_error: Optional[str] = None
     for sub in subs:
-        ok, status, hint = _deliver_push_result(sub, payload, vapid_pem)
+        ok, status, hint = _deliver_push_result(sub, payload, vapid)
         if ok:
             sent += 1
         else:
@@ -268,12 +264,12 @@ def send_push_notifications(entry: Dict[str, Any]) -> None:
         return
 
     payload = _build_payload(entry)
-    vapid_pem = _vapid_private_key_pem()
+    vapid = _load_vapid()
 
     channel_name = entry.get("channel", "")
 
     for sub in subs:
         if channel_name and not resolve_notification_enabled(sub["email"], channel_name):
             continue
-        if not _deliver_push(sub, payload, vapid_pem):
+        if not _deliver_push(sub, payload, vapid):
             pass
