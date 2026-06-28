@@ -4,7 +4,6 @@ After=network.target
 
 [Service]
 Type=simple
-User=www-data
 WorkingDirectory={{TARGET_DIR}}/backend
 EnvironmentFile={{TARGET_DIR}}/.env
 ExecStart={{TARGET_DIR}}/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8002
@@ -13,4 +12,4 @@ RestartSec=5
 Environment=PYTHONUNBUFFERED=1
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target

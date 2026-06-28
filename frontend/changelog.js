@@ -1,8 +1,15 @@
 'use strict'
 
-const APP_VERSION = '1.0.4'
+const APP_VERSION = '1.0.5'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.0.5',
+    date: '2026-06-29',
+    changes: [
+      'GitHub Actions デプロイを user systemd に切り替え、sudo 不要に',
+    ],
+  },
   {
     version: '1.0.4',
     date: '2026-06-29',
