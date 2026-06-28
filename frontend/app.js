@@ -54,6 +54,7 @@ let notificationSettings = { channels: {}, groups: {} }
 
 const LAST_READ_KEY = 'signaly-last-read'
 const LAST_CHANNEL_KEY = 'signaly-last-channel'
+const CHANNEL_TREE_KEY = 'signaly-channel-tree'
 const UNREAD_POLL_MS = 15000
 const NEW_CARD_FADE_MS = 60000
 
@@ -192,6 +193,7 @@ function showChannelListLoading() {
 }
 
 function showChannelListError(detail, retryFn) {
+  clearChannelListRefreshHint()
   channelList.innerHTML = ''
   const wrap = document.createElement('div')
   wrap.className = 'loading-text loading-text--error'
@@ -216,6 +218,27 @@ function showChannelListError(detail, retryFn) {
   }
 
   channelList.appendChild(wrap)
+}
+
+function clearChannelListRefreshHint() {
+  document.getElementById('channel-refresh-hint')?.remove()
+}
+
+function showChannelListRefreshHint(detail, retryFn) {
+  clearChannelListRefreshHint()
+  const hint = document.createElement('div')
+  hint.id = 'channel-refresh-hint'
+  hint.className = 'channel-refresh-hint'
+  hint.textContent = `更新できませんでした（${detail}）`
+  if (retryFn) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'channel-refresh-hint-btn'
+    btn.textContent = '再試行'
+    btn.addEventListener('click', retryFn)
+    hint.appendChild(btn)
+  }
+  channelList.parentElement?.insertBefore(hint, channelList)
 }
 
 function showFeedLoading() {
@@ -287,6 +310,37 @@ function saveLastChannel(name) {
   } catch {
     // quota exceeded 等は無視
   }
+}
+
+function saveChannelTreeCache(data) {
+  try {
+    localStorage.setItem(CHANNEL_TREE_KEY, JSON.stringify(data))
+  } catch {
+    // quota exceeded 等は無視
+  }
+}
+
+function loadChannelTreeCache() {
+  try {
+    const raw = localStorage.getItem(CHANNEL_TREE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function clearChannelTreeCache() {
+  try {
+    localStorage.removeItem(CHANNEL_TREE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+function showAuthenticatedShell() {
+  SignalySettings.showAuthenticated()
+  if (addGroupBtn) addGroupBtn.hidden = false
+  if (reorderModeBtn) reorderModeBtn.hidden = false
 }
 
 function markChannelRead(channelName, timestampMs = Date.now()) {
@@ -1662,6 +1716,7 @@ createChannelForm?.addEventListener('submit', async (e) => {
     const listRes = await fetch(apiUrl('api/channels'))
     if (listRes.ok) {
       const tree = await listRes.json()
+      saveChannelTreeCache(tree)
       renderChannelTree(tree, data.name)
     }
   } catch {
@@ -1702,6 +1757,7 @@ async function refreshChannels(selectName = null) {
   const res = await fetch(apiUrl('api/channels'))
   if (!res.ok) return false
   const data = await res.json()
+  saveChannelTreeCache(data)
   renderChannelTree(data, selectName)
   await loadNotificationSettings()
   return true
@@ -2173,7 +2229,8 @@ function setupServiceWorkerAutoUpdate(registration) {
   window.addEventListener('focus', checkForUpdates)
   setInterval(checkForUpdates, 60 * 60 * 1000)
 
-  checkForUpdates()
+  // 起動直後はチャンネル取得を優先し、SW 更新チェックは後回しにする
+  setTimeout(checkForUpdates, 5000)
 }
 
 async function registerServiceWorker() {
@@ -2199,6 +2256,8 @@ async function registerServiceWorker() {
 
 async function init() {
 
+  clearChannelListRefreshHint()
+
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) void updateAppBadge()
   })
@@ -2209,8 +2268,15 @@ async function init() {
   // SW 登録は初回 iOS PWA で遅くなりがちなので起動をブロックしない
   void registerServiceWorker()
 
-  showChannelListLoading()
-  showFeedLoading()
+  const cachedTree = loadChannelTreeCache()
+  const startupChannel = resolveStartupChannel()
+  if (cachedTree) {
+    showAuthenticatedShell()
+    renderChannelTree(cachedTree, startupChannel)
+  } else {
+    showChannelListLoading()
+    showFeedLoading()
+  }
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
@@ -2218,6 +2284,7 @@ async function init() {
     const res = await fetch(apiUrl('api/channels'), { signal: controller.signal })
     clearTimeout(timeout)
     if (res.status === 401) {
+      clearChannelTreeCache()
       channelList.innerHTML = ''
       hideFeedState()
       loginOverlay.classList.add('visible')
@@ -2225,10 +2292,10 @@ async function init() {
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
-    SignalySettings.showAuthenticated()
-    if (addGroupBtn) addGroupBtn.hidden = false
-    if (reorderModeBtn) reorderModeBtn.hidden = false
-    renderChannelTree(data, resolveStartupChannel())
+    clearChannelListRefreshHint()
+    saveChannelTreeCache(data)
+    showAuthenticatedShell()
+    renderChannelTree(data, startupChannel)
     clearPushDeepLinkMarker()
     startUnreadPolling()
     void loadNotificationSettings()
@@ -2239,6 +2306,13 @@ async function init() {
     })
   } catch (err) {
     clearTimeout(timeout)
+    if (cachedTree) {
+      const msg = err.name === 'AbortError' ? 'タイムアウト' : err.message
+      showChannelListRefreshHint(msg, init)
+      startUnreadPolling()
+      void loadNotificationSettings()
+      return
+    }
     const msg = err.name === 'AbortError' ? 'タイムアウト' : err.message
     showChannelListError(msg, init)
     showFeedError('チャンネル一覧の読み込みに失敗しました', init)
