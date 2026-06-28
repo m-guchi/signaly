@@ -21,6 +21,12 @@ from itsdangerous import BadData
 
 import auth
 from database import ApiKey, Channel, ChannelGroup, Notification, PushSubscription, get_session, init_db
+from notification_prefs import (
+    delete_settings_for_target,
+    get_notification_settings,
+    set_channel_notification_setting,
+    set_group_notification_setting,
+)
 from push import push_configured, send_push_notifications, validate_push_config
 from webhook import parse_webhook_payload
 
@@ -131,6 +137,7 @@ def _delete_channel(channel_id: str) -> Optional[str]:
         )
         session.delete(row)
         session.commit()
+    delete_settings_for_target("channel", channel_id)
     _subscribers.pop(name, None)
     return name
 
@@ -180,6 +187,7 @@ def _delete_group(group_id: str) -> Optional[str]:
         name = row.name
         session.delete(row)
         session.commit()
+    delete_settings_for_target("group", group_id)
     return name
 
 
@@ -428,6 +436,15 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def no_cache_frontend_assets(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.endswith((".html", ".js", ".css")):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return response
 
 
 # ── Auth endpoints ────────────────────────────────────────────────────────────
@@ -708,6 +725,14 @@ class ReorderLayoutRequest(BaseModel):
     channels: List[LayoutChannelItem]
 
 
+class ChannelNotificationSettingRequest(BaseModel):
+    enabled: Optional[bool] = None
+
+
+class GroupNotificationSettingRequest(BaseModel):
+    enabled: bool
+
+
 @app.get("/api/channels")
 async def get_channels(request: Request, email: str = Depends(auth.require_auth)):
     return await asyncio.to_thread(_fetch_channels_tree, request)
@@ -874,6 +899,49 @@ async def stream_events(channel_name: str, request: Request, email: str = Depend
             "Connection": "keep-alive",
         },
     )
+
+
+# ── Notification settings ─────────────────────────────────────────────────────
+
+@app.get("/api/notification-settings")
+async def get_user_notification_settings(email: str = Depends(auth.require_auth)):
+    return await asyncio.to_thread(get_notification_settings, email)
+
+
+@app.put("/api/channels/{channel_id}/notification-setting")
+async def update_channel_notification_setting(
+    channel_id: str,
+    body: ChannelNotificationSettingRequest,
+    email: str = Depends(auth.require_auth),
+):
+    if "enabled" not in body.model_fields_set:
+        raise HTTPException(status_code=400, detail="enabled を指定してください")
+    try:
+        await asyncio.to_thread(
+            set_channel_notification_setting, email, channel_id, body.enabled
+        )
+    except ValueError as exc:
+        if str(exc) == "channel_not_found":
+            raise HTTPException(status_code=404, detail="Channel not found")
+        raise
+    return {"ok": True}
+
+
+@app.put("/api/groups/{group_id}/notification-setting")
+async def update_group_notification_setting(
+    group_id: str,
+    body: GroupNotificationSettingRequest,
+    email: str = Depends(auth.require_auth),
+):
+    try:
+        await asyncio.to_thread(
+            set_group_notification_setting, email, group_id, body.enabled
+        )
+    except ValueError as exc:
+        if str(exc) == "group_not_found":
+            raise HTTPException(status_code=404, detail="グループが見つかりません")
+        raise
+    return {"ok": True}
 
 
 # ── Web Push ──────────────────────────────────────────────────────────────────

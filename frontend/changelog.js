@@ -1,8 +1,15 @@
 'use strict'
 
-const APP_VERSION = '0.2.1'
+const APP_VERSION = '0.2.10'
 
 const APP_CHANGELOG = [
+  {
+    version: '0.2.10',
+    date: '2026-06-29',
+    changes: [
+      '通知の時刻・日付表示を改善（時刻のみ右上、日付は区切り表示）',
+    ],
+  },
   {
     version: '0.2.1',
     date: '2026-06-29',

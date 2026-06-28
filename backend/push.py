@@ -12,6 +12,7 @@ from py_vapid import Vapid02
 from pywebpush import WebPushException, webpush
 
 from database import PushSubscription, get_session
+from notification_prefs import resolve_notification_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,7 @@ def _fetch_subscriptions() -> List[Dict[str, str]]:
         return [
             {
                 "id": row.id,
+                "email": row.email,
                 "endpoint": row.endpoint,
                 "p256dh": row.p256dh,
                 "auth": row.auth,
@@ -118,7 +120,11 @@ def send_push_notifications(entry: Dict[str, Any]) -> None:
     payload = _build_payload(entry)
     vapid = _load_vapid()
 
+    channel_name = entry.get("channel", "")
+
     for sub in subs:
+        if channel_name and not resolve_notification_enabled(sub["email"], channel_name):
+            continue
         subscription_info = {
             "endpoint": sub["endpoint"],
             "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},

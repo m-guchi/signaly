@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache">
   <title>Signaly</title>
   <link rel="manifest" href="manifest.json?v=0.2.0">
   <link rel="icon" href="icon.svg?v=0.2.0" type="image/svg+xml">
   <link rel="apple-touch-icon" href="apple-touch-icon.png?v=0.2.0">
-  <link rel="stylesheet" href="style.css?v=0.2.7">
+  <link rel="stylesheet" href="style.css?v=0.2.10">
   <meta name="theme-color" content="#000000">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -69,7 +70,10 @@
         <h1 id="channel-title" class="channel-title">チャンネルを選択</h1>
         <span id="status" class="status status--disconnected" title="接続状態">●</span>
       </header>
-      <div id="feed" role="log" aria-live="polite" aria-relevant="additions"></div>
+      <div id="feed-viewport" class="feed-viewport">
+        <div id="feed-sticky-date" class="feed-sticky-date" hidden></div>
+        <div id="feed" role="log" aria-live="polite" aria-relevant="additions"></div>
+      </div>
       <button id="new-notif-banner" type="button" class="new-notif-banner" hidden>新着</button>
       <div id="empty-state" class="empty-state" hidden>通知はまだありません</div>
     </main>
@@ -103,6 +107,14 @@
           <button id="group-settings-rename-btn" type="button" class="create-channel-copy">変更</button>
         </div>
         <p id="group-settings-error" class="create-channel-error" hidden></p>
+
+        <label class="create-channel-label" for="group-settings-notif">通知</label>
+        <select id="group-settings-notif" class="create-channel-input notif-setting-select">
+          <option value="true">有効</option>
+          <option value="false">無効</option>
+        </select>
+        <p class="create-channel-hint">グループ内のチャンネルすべてに適用されます。チャンネル個別の設定がある場合はそちらが優先されます。</p>
+
         <div class="channel-settings-actions">
           <button id="group-settings-delete" type="button" class="create-channel-copy channel-delete-btn">グループを削除</button>
         </div>
@@ -175,6 +187,14 @@
           <button id="channel-settings-rename-btn" type="button" class="create-channel-copy">変更</button>
         </div>
         <p id="channel-settings-error" class="create-channel-error" hidden></p>
+
+        <label class="create-channel-label" for="channel-settings-notif">通知</label>
+        <select id="channel-settings-notif" class="create-channel-input notif-setting-select">
+          <option value="inherit">グループに従う</option>
+          <option value="true">有効</option>
+          <option value="false">無効</option>
+        </select>
+        <p id="channel-settings-notif-hint" class="create-channel-hint"></p>
 
         <label class="create-channel-label">Webhook URL</label>
         <button id="channel-settings-reveal-webhook" type="button" class="create-channel-copy webhook-reveal-btn">URL を表示</button>
@@ -314,10 +334,10 @@
     </div>
   </div>
 
-  <script src="changelog.js?v=0.2.0"></script>
-  <script src="dialog.js?v=0.2.2"></script>
-  <script src="reorder.js?v=0.2.7"></script>
-  <script src="settings.js?v=0.2.5"></script>
-  <script src="app.js?v=0.2.7"></script>
+  <script src="changelog.js?v=0.2.10"></script>
+  <script src="dialog.js?v=0.2.10"></script>
+  <script src="reorder.js?v=0.2.10"></script>
+  <script src="settings.js?v=0.2.10"></script>
+  <script src="app.js?v=0.2.11"></script>
 </body>
 </html>

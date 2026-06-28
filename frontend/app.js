@@ -19,6 +19,7 @@ let pollTimer = null
 let unreadPollTimer = null
 let pushSubscribed = false
 let pendingNewCount = 0
+let notificationSettings = { channels: {}, groups: {} }
 
 const LAST_READ_KEY = 'signaly-last-read'
 const UNREAD_POLL_MS = 15000
@@ -28,6 +29,7 @@ const NEW_CARD_FADE_MS = 60000
 
 const channelList = document.getElementById('channel-list')
 const feed = document.getElementById('feed')
+const feedStickyDate = document.getElementById('feed-sticky-date')
 const emptyState = document.getElementById('empty-state')
 const newNotifBanner = document.getElementById('new-notif-banner')
 const channelTitle = document.getElementById('channel-title')
@@ -91,12 +93,54 @@ function parseTimestamp(isoString) {
   return Date.parse(s)
 }
 
+function getDateKey(isoString) {
+  const ts = parseTimestamp(isoString)
+  if (Number.isNaN(ts)) return ''
+  const d = new Date(ts)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function formatDateFromKey(dateKey) {
+  if (!dateKey) return ''
+  const [y, m, d] = dateKey.split('-')
+  return `${y}/${m}/${d}`
+}
+
 function formatNotificationTime(isoString) {
   const ts = parseTimestamp(isoString)
   if (Number.isNaN(ts)) return ''
   const d = new Date(ts)
   const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+function createDateDivider(dateKey) {
+  const el = document.createElement('div')
+  el.className = 'feed-date-divider'
+  el.dataset.date = dateKey
+  el.setAttribute('role', 'separator')
+  el.textContent = formatDateFromKey(dateKey)
+  return el
+}
+
+function updateStickyFeedDate() {
+  if (!feedStickyDate || !feed) return
+  const cards = [...feed.querySelectorAll('.notif-card')]
+  if (!cards.length) {
+    feedStickyDate.hidden = true
+    return
+  }
+  const feedRect = feed.getBoundingClientRect()
+  let dateKey = cards[0].dataset.date
+  for (const card of cards) {
+    if (card.getBoundingClientRect().bottom > feedRect.top + 4) {
+      dateKey = card.dataset.date
+      break
+    }
+  }
+  feedStickyDate.textContent = formatDateFromKey(dateKey)
+  feedStickyDate.hidden = false
 }
 
 function setStatus(state) {
@@ -161,6 +205,7 @@ function createCard(entry, { isNew = false } = {}) {
   card.className = 'notif-card' + (isNew ? ' notif-card--new' : '')
   card.dataset.level = entry.level || 'info'
   card.dataset.id = entry.id
+  card.dataset.date = getDateKey(entry.timestamp)
 
   if (entry.color) {
     card.style.borderLeftColor = entry.color
@@ -249,12 +294,14 @@ function prependCard(entry, { isNew = false } = {}) {
   if (seenIds.has(entry.id)) return
   seenIds.add(entry.id)
 
+  const dateKey = getDateKey(entry.timestamp)
   const card = createCard(entry, { isNew })
-  if (feed.firstChild) {
-    feed.insertBefore(card, feed.firstChild)
-  } else {
-    feed.appendChild(card)
+
+  const next = feed.firstChild
+  if (next?.classList.contains('notif-card') && next.dataset.date !== dateKey) {
+    feed.insertBefore(createDateDivider(next.dataset.date), next)
   }
+  feed.insertBefore(card, feed.firstChild)
   if (emptyState) emptyState.hidden = true
 
   if (isNew) {
@@ -266,6 +313,7 @@ function prependCard(entry, { isNew = false } = {}) {
     }
     scheduleNewCardFade(card)
   }
+  updateStickyFeedDate()
 }
 
 // ── Channel list ─────────────────────────────────────────────────────────────
@@ -548,12 +596,22 @@ function enterReorderMode() {
   updateReorderModeBtn()
 }
 
+function blurSidebarActionFocus() {
+  const el = document.activeElement
+  if (el?.closest?.('.channel-section-actions')) {
+    el.blur()
+  }
+}
+
 async function exitReorderMode() {
   if (!reorderMode) return
 
   const btn = document.getElementById('reorder-mode-btn')
   const layout = SignalyReorder.collectLayout()
-  if (btn) btn.disabled = true
+  if (btn) {
+    btn.blur()
+    btn.disabled = true
+  }
 
   try {
     const res = await fetch(apiUrl('api/channels/layout'), {
@@ -576,6 +634,7 @@ async function exitReorderMode() {
   reorderMode = false
   SignalyReorder.setActive(false)
   updateReorderModeBtn()
+  blurSidebarActionFocus()
   await refreshChannels(activeChannel)
 }
 
@@ -641,6 +700,7 @@ async function selectChannel(name) {
   updateAllBadges()
   channelTitle.textContent = `# ${name}`
   feed.innerHTML = ''
+  if (feedStickyDate) feedStickyDate.hidden = true
   if (emptyState) emptyState.hidden = true
   seenIds.clear()
   setStatus('connecting')
@@ -663,17 +723,24 @@ async function loadHistory(channelName) {
       return
     }
     let newestTs = 0
+    let prevDateKey = null
     // API は新しい順。appendChild で先頭が最新になる
     for (const entry of logs) {
       if (seenIds.has(entry.id)) continue
       seenIds.add(entry.id)
+      const dateKey = getDateKey(entry.timestamp)
+      if (prevDateKey !== null && prevDateKey !== dateKey) {
+        feed.appendChild(createDateDivider(dateKey))
+      }
       feed.appendChild(createCard(entry))
       const ts = parseTimestamp(entry.timestamp)
       if (ts > newestTs) newestTs = ts
+      prevDateKey = dateKey
     }
     markChannelRead(channelName, newestTs || Date.now())
     // 最新が上になるよう先頭にスクロール
     feed.scrollTop = 0
+    updateStickyFeedDate()
   } catch {
     // ネットワーク失敗時はサイレントに無視
   }
@@ -814,6 +881,67 @@ function connectSSE(channelName) {
   }
 }
 
+// ── Notification preferences (channel > group) ───────────────────────────────
+
+async function loadNotificationSettings() {
+  try {
+    const res = await fetch(apiUrl('api/notification-settings'))
+    if (!res.ok) return false
+    notificationSettings = await res.json()
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isNotificationEnabled(channelName) {
+  const channel = channelsByName[channelName]
+  if (!channel?.id) return true
+
+  const channelPref = notificationSettings.channels[channel.id]
+  if (channelPref !== undefined && channelPref !== null) {
+    return channelPref
+  }
+
+  const groupId = channel.group_id
+  if (groupId && notificationSettings.groups[groupId] !== undefined) {
+    return notificationSettings.groups[groupId]
+  }
+
+  return true
+}
+
+function channelNotificationEffectiveHint(channelName) {
+  const channel = channelsByName[channelName]
+  if (!channel?.id) return ''
+
+  const channelPref = notificationSettings.channels[channel.id]
+  if (channelPref !== undefined && channelPref !== null) {
+    return channelPref ? '現在: 有効（チャンネル設定）' : '現在: 無効（チャンネル設定）'
+  }
+
+  const enabled = isNotificationEnabled(channelName)
+  if (channel.group_id) {
+    return enabled
+      ? '現在: 有効（グループ設定）'
+      : '現在: 無効（グループ設定）'
+  }
+
+  return enabled ? '現在: 有効（デフォルト）' : '現在: 無効'
+}
+
+function channelNotificationSelectValue(channelId) {
+  const pref = notificationSettings.channels[channelId]
+  if (pref === true) return 'true'
+  if (pref === false) return 'false'
+  return 'inherit'
+}
+
+function groupNotificationSelectValue(groupId) {
+  const pref = notificationSettings.groups[groupId]
+  return pref === false ? 'false' : 'true'
+}
+
 // ── Desktop / Push notification ─────────────────────────────────────────────
 
 function urlBase64ToUint8Array(base64String) {
@@ -901,6 +1029,7 @@ async function unsubscribePush() {
 
 function showDesktopNotification(entry) {
   if (pushSubscribed) return
+  if (!isNotificationEnabled(entry.channel)) return
   if (!('Notification' in window) || Notification.permission !== 'granted') return
 
   const title = entry.title || `# ${entry.channel}`
@@ -1128,6 +1257,7 @@ async function refreshChannels(selectName = null) {
   if (!res.ok) return false
   const data = await res.json()
   renderChannelTree(data, selectName)
+  await loadNotificationSettings()
   return true
 }
 
@@ -1139,6 +1269,7 @@ const groupSettingsRename = document.getElementById('group-settings-rename')
 const groupSettingsRenameBtn = document.getElementById('group-settings-rename-btn')
 const groupSettingsError = document.getElementById('group-settings-error')
 const groupSettingsDelete = document.getElementById('group-settings-delete')
+const groupSettingsNotif = document.getElementById('group-settings-notif')
 const groupDeleteDialog = document.getElementById('group-delete-dialog')
 const groupDeleteName = document.getElementById('group-delete-name')
 const groupDeleteError = document.getElementById('group-delete-error')
@@ -1155,6 +1286,7 @@ function resetGroupSettingsDialog() {
   groupSettingsError.textContent = ''
   groupSettingsRenameBtn.disabled = false
   groupSettingsDelete.disabled = false
+  if (groupSettingsNotif) groupSettingsNotif.disabled = false
 }
 
 function openGroupSettings(groupId) {
@@ -1164,6 +1296,9 @@ function openGroupSettings(groupId) {
   groupSettingsId = groupId
   groupSettingsOriginalName = group.name
   groupSettingsRename.value = group.name
+  if (groupSettingsNotif) {
+    groupSettingsNotif.value = groupNotificationSelectValue(groupId)
+  }
   groupSettingsError.hidden = true
   closeSidebar()
   SignalyDialog.open(groupSettingsDialog, { focusEl: groupSettingsRename })
@@ -1238,6 +1373,41 @@ groupSettingsRenameBtn?.addEventListener('click', async () => {
   }
 })
 
+groupSettingsNotif?.addEventListener('change', async () => {
+  if (!groupSettingsId || !groupSettingsNotif) return
+
+  const enabled = groupSettingsNotif.value === 'true'
+  groupSettingsNotif.disabled = true
+
+  try {
+    const res = await fetch(apiUrl(`api/groups/${groupSettingsId}/notification-setting`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      groupSettingsError.textContent = parseApiError(data, '通知設定の保存に失敗しました')
+      groupSettingsError.hidden = false
+      groupSettingsNotif.value = groupNotificationSelectValue(groupSettingsId)
+      return
+    }
+
+    if (enabled) {
+      delete notificationSettings.groups[groupSettingsId]
+    } else {
+      notificationSettings.groups[groupSettingsId] = false
+    }
+    groupSettingsError.hidden = true
+  } catch {
+    groupSettingsError.textContent = 'ネットワークエラーが発生しました'
+    groupSettingsError.hidden = false
+    groupSettingsNotif.value = groupNotificationSelectValue(groupSettingsId)
+  } finally {
+    groupSettingsNotif.disabled = false
+  }
+})
+
 groupDeleteConfirm?.addEventListener('click', async () => {
   if (!groupSettingsId) return
 
@@ -1288,6 +1458,8 @@ const channelSettingsCopy = document.getElementById('channel-settings-copy')
 const channelSettingsRevealWebhook = document.getElementById('channel-settings-reveal-webhook')
 const channelSettingsWebhookSection = document.getElementById('channel-settings-webhook-section')
 const channelSettingsDelete = document.getElementById('channel-settings-delete')
+const channelSettingsNotif = document.getElementById('channel-settings-notif')
+const channelSettingsNotifHint = document.getElementById('channel-settings-notif-hint')
 const channelDeleteDialog = document.getElementById('channel-delete-dialog')
 const channelDeleteName = document.getElementById('channel-delete-name')
 const channelDeleteError = document.getElementById('channel-delete-error')
@@ -1305,6 +1477,7 @@ function resetChannelSettingsDialog() {
   hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy)
   channelSettingsRenameBtn.disabled = false
   channelSettingsDelete.disabled = false
+  if (channelSettingsNotif) channelSettingsNotif.disabled = false
 }
 
 function openChannelSettings(channelName) {
@@ -1314,6 +1487,12 @@ function openChannelSettings(channelName) {
   channelSettingsId = channel.id
   channelSettingsOriginalName = channelName
   channelSettingsRename.value = channelName
+  if (channelSettingsNotif) {
+    channelSettingsNotif.value = channelNotificationSelectValue(channel.id)
+  }
+  if (channelSettingsNotifHint) {
+    channelSettingsNotifHint.textContent = channelNotificationEffectiveHint(channelName)
+  }
   channelSettingsWebhook.value = channel.webhook_url || ''
   channelSettingsError.hidden = true
   hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy)
@@ -1332,6 +1511,45 @@ channelSettingsClose?.addEventListener('click', closeChannelSettingsDialog)
 channelSettingsDialog?.addEventListener('click', (e) => {
   if (e.target === channelSettingsDialog && !channelDeleteDialog?.classList.contains('open')) {
     closeChannelSettingsDialog()
+  }
+})
+
+channelSettingsNotif?.addEventListener('change', async () => {
+  if (!channelSettingsId || !channelSettingsNotif) return
+
+  const selected = channelSettingsNotif.value
+  const enabled = selected === 'inherit' ? null : selected === 'true'
+  channelSettingsNotif.disabled = true
+
+  try {
+    const res = await fetch(apiUrl(`api/channels/${channelSettingsId}/notification-setting`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      channelSettingsError.textContent = parseApiError(data, '通知設定の保存に失敗しました')
+      channelSettingsError.hidden = false
+      channelSettingsNotif.value = channelNotificationSelectValue(channelSettingsId)
+      return
+    }
+
+    if (enabled === null) {
+      delete notificationSettings.channels[channelSettingsId]
+    } else {
+      notificationSettings.channels[channelSettingsId] = enabled
+    }
+    if (channelSettingsNotifHint && channelSettingsOriginalName) {
+      channelSettingsNotifHint.textContent = channelNotificationEffectiveHint(channelSettingsOriginalName)
+    }
+    channelSettingsError.hidden = true
+  } catch {
+    channelSettingsError.textContent = 'ネットワークエラーが発生しました'
+    channelSettingsError.hidden = false
+    channelSettingsNotif.value = channelNotificationSelectValue(channelSettingsId)
+  } finally {
+    channelSettingsNotif.disabled = false
   }
 })
 
@@ -1526,6 +1744,7 @@ async function init() {
     if (addGroupBtn) addGroupBtn.hidden = false
     if (reorderModeBtn) reorderModeBtn.hidden = false
     renderChannelTree(data, urlChannel)
+    await loadNotificationSettings()
     startUnreadPolling()
     try {
       await syncPushSubscription()
@@ -1541,6 +1760,7 @@ async function init() {
 }
 
 feed?.addEventListener('scroll', () => {
+  updateStickyFeedDate()
   if (feed.scrollTop <= 40 && pendingNewCount > 0) {
     dismissNewHighlights()
   } else {

@@ -258,6 +258,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  align-self: stretch;
   width: 20px;
   color: var(--text-subtle);
   cursor: grab;
@@ -302,6 +303,8 @@ html, body {
   border-radius: 4px;
   display: flex;
   align-items: center;
+  justify-content: center;
+  align-self: center;
   transition: color 0.15s, background 0.15s;
 }
 
@@ -360,6 +363,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  align-self: center;
   width: 24px;
   height: 24px;
   padding: 0;
@@ -377,15 +381,9 @@ html, body {
   background: var(--surface-hover);
 }
 
-@media (max-width: 767px) {
-  .group-settings-btn {
-    opacity: 1;
-  }
-}
-
 .channel-row {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   width: 100%;
 }
 
@@ -403,11 +401,13 @@ html, body {
   border-radius: 0;
   color: var(--text-muted);
   font-size: 13px;
+  line-height: 1.2;
   transition: background 0.1s, color 0.1s;
   border: none;
   background: none;
   flex: 1;
   min-width: 0;
+  min-height: 100%;
   text-align: left;
 }
 
@@ -416,6 +416,7 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  line-height: 1.2;
 }
 
 .channel-settings-btn {
@@ -423,6 +424,7 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  align-self: center;
   width: 28px;
   height: 28px;
   margin-right: 6px;
@@ -444,7 +446,8 @@ html, body {
 .channel-item::before {
   content: "#";
   opacity: 0.4;
-  font-size: 12px;
+  font-size: 1em;
+  line-height: 1;
   flex-shrink: 0;
 }
 
@@ -558,13 +561,58 @@ html, body {
 .status--connecting { color: var(--warning); }
 .status--disconnected { color: var(--text-subtle); }
 
+#feed-viewport {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.feed-sticky-date {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  padding: 2px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 88%, var(--surface));
+  border: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 #feed {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 16px;
+  padding: 32px 16px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.feed-date-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.feed-date-divider::before,
+.feed-date-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
 }
 
 .new-notif-banner {
@@ -590,8 +638,63 @@ html, body {
 }
 
 @media (max-width: 767px) {
+  .channel-row {
+    min-height: 44px;
+  }
+
   .channel-settings-btn {
     opacity: 1;
+    width: 36px;
+    height: 36px;
+    margin-right: 4px;
+  }
+
+  .group-settings-btn {
+    opacity: 1;
+    width: 36px;
+    height: 36px;
+  }
+
+  .add-channel-btn {
+    width: 36px;
+    height: 36px;
+    padding: 6px;
+  }
+
+  .channel-section-header {
+    padding: 12px 12px 6px;
+    min-height: 44px;
+  }
+
+  .channel-group-header {
+    padding: 6px 0;
+    min-height: 44px;
+  }
+
+  .channel-group-label {
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  .channel-item {
+    padding: 0 8px 0 12px;
+    font-size: 14px;
+  }
+
+  .reorder-handle {
+    width: 28px;
+  }
+
+  .channel-group {
+    margin-bottom: 4px;
+  }
+
+  .channel-group-channels {
+    padding-bottom: 4px;
+  }
+
+  .reorder-hint {
+    padding-bottom: 10px;
   }
 }
 
@@ -1034,6 +1137,10 @@ html, body {
 .create-channel-hint {
   font-size: 11px;
   color: var(--text-subtle);
+}
+
+.notif-setting-select {
+  cursor: pointer;
 }
 
 /* ── Notification settings dialog ──────────── */

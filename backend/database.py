@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, create_engine, text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session
 
 _DB_USER = os.environ.get("DB_USER", "user")
@@ -70,6 +70,16 @@ class Notification(Base):
     timestamp = Column(DateTime(timezone=True), nullable=False)
     fields = Column(Text, nullable=True)   # JSON array [{name, value, inline}]
     color = Column(String(20), nullable=True)  # CSS hex color e.g. #57f287
+
+
+class NotificationSetting(Base):
+    __tablename__ = "notification_settings"
+
+    email = Column(String(255), primary_key=True, nullable=False)
+    target_type = Column(String(10), primary_key=True, nullable=False)
+    target_id = Column(String(36), primary_key=True, nullable=False)
+    enabled = Column(Boolean, nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
 
 
 class PushSubscription(Base):
