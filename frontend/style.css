@@ -802,6 +802,22 @@ html, body {
   border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
 }
 
+.notif-card--highlight {
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface));
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
+  animation: notif-highlight-pulse 1.2s ease-in-out 3;
+}
+
+@keyframes notif-highlight-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+}
+
 .notif-new-badge {
   flex-shrink: 0;
   font-size: 10px;

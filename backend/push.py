@@ -90,13 +90,20 @@ def _notification_body(entry: Dict[str, Any]) -> str:
 
 def _build_payload(entry: Dict[str, Any]) -> str:
     channel = entry.get("channel", "")
+    notif_id = entry.get("id")
+    if channel:
+        url = f"./?channel={channel}&src=push"
+        if notif_id:
+            url += f"&id={notif_id}"
+    else:
+        url = "./"
     return json.dumps(
         {
             "title": entry.get("title") or f"#{channel}",
             "body": _notification_body(entry),
-            "id": entry.get("id"),
+            "id": notif_id,
             "channel": channel,
-            "url": f"./?channel={channel}&src=push" if channel else "./",
+            "url": url,
         },
         ensure_ascii=False,
     )
