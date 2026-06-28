@@ -14,26 +14,20 @@ jobs:
       - name: 1Password からシークレットを読み込む
         uses: 1password/load-secrets-action@v4
         with:
-          export-to-environment: true
+          export-env: true
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          SSH_PRIVATE_KEY:        op://apps/Server/private_key
-          SSH_KNOWN_HOSTS:        op://apps/Server/known_hosts
-          SSH_HOST:               op://apps/Server/hostname
-          SSH_USER:               op://apps/Server/username
-          DISCORD_CI_WEBHOOK_URL: op://apps/discord_webhook/CI_URL
-          APP_DIR:                op://apps/signaly/deploy-dir
-          DB_NAME:                op://apps/signaly/db-name
-          DB_USER:                op://apps/DB/db-user
-          DB_PASSWORD:            op://apps/DB/db-password
-          DB_HOST:                op://apps/DB/db-host
-          DB_PORT:                op://apps/DB/db-port
+          OP_ENV_FILE: .github/deploy.env.tpl
 
       - name: SSH キーをセットアップ
         uses: shimataro/ssh-key-action@v2
         with:
           key:           ${{ env.SSH_PRIVATE_KEY }}
-          known_hosts:   ${{ env.SSH_KNOWN_HOSTS }}
+          known_hosts:   placeholder
+          if_key_exists: replace
+
+      - name: known_hosts を追加
+        run: ssh-keyscan -p "${SSH_PORT}" -H "${HOST}" >> ~/.ssh/known_hosts
 
       - name: VPS にデプロイ
         env:
@@ -45,14 +39,15 @@ jobs:
           DB_PORT:     ${{ env.DB_PORT }}
         run: |
           rsync -az --delete \
+            -e "ssh -p ${SSH_PORT}" \
             --exclude='.git' \
             --exclude='.venv' \
             --exclude='backend/channels.json' \
-            ./ ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:${APP_DIR}/
+            ./ "${USERNAME}@${HOST}:${APP_DIR}/"
 
           b64() { printf '%s' "$1" | base64 -w 0; }
 
-          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} << EOF
+          ssh -p "${SSH_PORT}" "${USERNAME}@${HOST}" << EOF
             set -e
             cd "${APP_DIR}"
 
