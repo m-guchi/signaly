@@ -681,6 +681,7 @@ function renderChannelTree(data, selectName = null, options = {}) {
     channelList.innerHTML = '<div class="loading-text">グループを作成してチャンネルを追加</div>'
     activeChannel = null
     channelTitle.textContent = 'チャンネルを選択'
+    hideFeedState()
     return
   }
 
@@ -703,6 +704,9 @@ function renderChannelTree(data, selectName = null, options = {}) {
   } else if (activeChannel) {
     setActiveChannelRow(activeChannel)
     updateAllBadges()
+    hideFeedState()
+  } else {
+    hideFeedState()
   }
 }
 
@@ -2054,9 +2058,11 @@ async function init() {
   const loginLink = document.getElementById('login-link')
   if (loginLink) loginLink.href = apiUrl('auth/login')
 
-  await registerServiceWorker()
+  // SW 登録は初回 iOS PWA で遅くなりがちなので起動をブロックしない
+  void registerServiceWorker()
 
   showChannelListLoading()
+  showFeedLoading()
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
@@ -2065,6 +2071,7 @@ async function init() {
     clearTimeout(timeout)
     if (res.status === 401) {
       channelList.innerHTML = ''
+      hideFeedState()
       loginOverlay.classList.add('visible')
       return
     }
@@ -2075,18 +2082,18 @@ async function init() {
     if (reorderModeBtn) reorderModeBtn.hidden = false
     renderChannelTree(data, resolveStartupChannel())
     clearPushDeepLinkMarker()
-    await loadNotificationSettings()
     startUnreadPolling()
-    try {
-      await syncPushSubscription()
-    } catch {
+    void loadNotificationSettings()
+    void syncPushSubscription().catch(() => {
       pushSubscribed = false
-    }
-    SignalySettings.updateSettingsBtnState()
+    }).finally(() => {
+      SignalySettings.updateSettingsBtnState()
+    })
   } catch (err) {
     clearTimeout(timeout)
     const msg = err.name === 'AbortError' ? 'タイムアウト' : err.message
     showChannelListError(msg, init)
+    showFeedError('チャンネル一覧の読み込みに失敗しました', init)
   }
 }
 

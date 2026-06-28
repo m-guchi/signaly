@@ -74,10 +74,10 @@
       <div id="feed-viewport" class="feed-viewport">
         <div id="feed-sticky-date" class="feed-sticky-date" hidden></div>
         <div id="feed" role="log" aria-live="polite" aria-relevant="additions"></div>
-        <div id="feed-state" class="feed-state" hidden>
+        <div id="feed-state" class="feed-state feed-state--loading">
           <div class="feed-state-inner">
             <span id="feed-state-spinner" class="loading-spinner" aria-hidden="true"></span>
-            <p id="feed-state-text" class="feed-state-text"></p>
+            <p id="feed-state-text" class="feed-state-text">起動中…</p>
             <button id="feed-state-retry" type="button" class="feed-state-retry" hidden>再試行</button>
           </div>
         </div>
@@ -365,10 +365,10 @@
     </div>
   </div>
 
-  <script src="changelog.js?v=1.0.7"></script>
-  <script src="dialog.js?v=1.0.7"></script>
-  <script src="reorder.js?v=1.0.7"></script>
-  <script src="settings.js?v=1.0.7"></script>
-  <script src="app.js?v=1.0.7"></script>
+  <script defer src="changelog.js?v=1.0.7"></script>
+  <script defer src="dialog.js?v=1.0.7"></script>
+  <script defer src="reorder.js?v=1.0.7"></script>
+  <script defer src="settings.js?v=1.0.7"></script>
+  <script defer src="app.js?v=1.0.7"></script>
 </body>
 </html>
