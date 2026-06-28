@@ -21,6 +21,7 @@ from itsdangerous import BadData
 
 import auth
 from database import ApiKey, Channel, ChannelGroup, Notification, PushSubscription, get_session, init_db
+from login_notify import build_login_notification, send_login_notification
 from notification_prefs import (
     delete_settings_for_target,
     get_notification_settings,
@@ -336,6 +337,35 @@ def _utc_iso(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S.%f").rstrip("0").rstrip(".") + "Z"
 
 
+async def _dispatch_notification(channel_name: str, parsed: dict) -> dict:
+    entry = {
+        "id": str(uuid.uuid4()),
+        "channel": channel_name,
+        "title": parsed["title"],
+        "message": parsed["message"],
+        "level": parsed["level"],
+        "color": parsed["color"],
+        "fields": parsed["fields"],
+        "timestamp": _utc_iso(datetime.now(timezone.utc)),
+    }
+
+    await asyncio.to_thread(_save_notification, entry)
+
+    for q in list(_subscribers.get(channel_name, [])):
+        try:
+            q.put_nowait(entry)
+        except asyncio.QueueFull:
+            _subscribers[channel_name].remove(q)
+
+    asyncio.create_task(asyncio.to_thread(send_push_notifications, entry))
+    return entry
+
+
+async def _notify_login(email: str, user_info: dict, request: Request) -> None:
+    payload = build_login_notification(email, user_info, request)
+    await send_login_notification(payload)
+
+
 def _save_notification(entry: dict) -> None:
     with get_session() as session:
         session.add(
@@ -465,7 +495,7 @@ async def auth_login():
         "client_id": auth.GOOGLE_CLIENT_ID,
         "redirect_uri": auth.GOOGLE_REDIRECT_URI,
         "response_type": "code",
-        "scope": "openid email",
+        "scope": "openid email profile",
         "state": state,
     })
     response = RedirectResponse(f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
@@ -514,7 +544,8 @@ async def auth_callback(request: Request, code: str, state: str):
     if user_resp.status_code != 200:
         raise HTTPException(status_code=400, detail="ユーザー情報の取得に失敗しました")
 
-    email: str = user_resp.json().get("email", "")
+    user_info = user_resp.json()
+    email: str = user_info.get("email", "")
     if not email or email not in auth.ALLOWED_EMAILS:
         raise HTTPException(status_code=403, detail="このアカウントはアクセスが許可されていません")
 
@@ -528,6 +559,7 @@ async def auth_callback(request: Request, code: str, state: str):
         samesite="lax",
     )
     response.delete_cookie(auth.STATE_COOKIE)
+    asyncio.create_task(_notify_login(email, user_info, request))
     return response
 
 
@@ -611,27 +643,7 @@ async def receive_webhook(channel_id: str, request: Request):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     channel_name = channels[channel_id]
-    entry = {
-        "id": str(uuid.uuid4()),
-        "channel": channel_name,
-        "title": parsed["title"],
-        "message": parsed["message"],
-        "level": parsed["level"],
-        "color": parsed["color"],
-        "fields": parsed["fields"],
-        "timestamp": _utc_iso(datetime.now(timezone.utc)),
-    }
-
-    await asyncio.to_thread(_save_notification, entry)
-
-    for q in list(_subscribers.get(channel_name, [])):
-        try:
-            q.put_nowait(entry)
-        except asyncio.QueueFull:
-            _subscribers[channel_name].remove(q)
-
-    asyncio.create_task(asyncio.to_thread(send_push_notifications, entry))
-
+    entry = await _dispatch_notification(channel_name, parsed)
     return {"ok": True, "id": entry["id"]}
 
 
