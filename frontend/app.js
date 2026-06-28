@@ -459,7 +459,9 @@ function showDesktopNotification(entry) {
 
   const title = entry.title || `# ${entry.channel}`
   const body = entry.message
-  const icon = 'icon.svg'
+  const icon = typeof APP_VERSION !== 'undefined'
+    ? `icon-192.png?v=${APP_VERSION}`
+    : 'icon-192.png'
 
   const n = new Notification(title, { body, icon, tag: entry.id })
   n.onclick = () => {
@@ -859,7 +861,10 @@ async function init() {
   if (loginLink) loginLink.href = apiUrl('auth/login')
 
   if ('serviceWorker' in navigator) {
-    await navigator.serviceWorker.register('./sw.js').catch(() => {})
+    const swUrl = typeof APP_VERSION !== 'undefined'
+      ? `./sw.js?v=${APP_VERSION}`
+      : './sw.js'
+    await navigator.serviceWorker.register(swUrl).catch(() => {})
   }
 
   const urlChannel = new URLSearchParams(location.search).get('channel')

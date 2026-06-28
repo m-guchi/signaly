@@ -21,6 +21,29 @@ except ImportError:
 ROOT = Path(__file__).parent.parent
 VERSION_FILE = ROOT / "version.json"
 CHANGELOG_FILE = ROOT / "frontend" / "changelog.js"
+FRONTEND_DIR = ROOT / "frontend"
+
+
+def sync_asset_versions(version: str) -> None:
+    """manifest / HTML / SW の ?v= クエリを揃える。"""
+    manifest = FRONTEND_DIR / "manifest.json"
+    text = manifest.read_text(encoding="utf-8")
+    text = re.sub(r"\?v=[^\"]+", f"?v={version}", text)
+    manifest.write_text(text, encoding="utf-8")
+    print(f"manifest.json のアイコン URL を v={version} に更新しました。")
+
+    for name in ("index.html", "webhooks.html"):
+        path = FRONTEND_DIR / name
+        text = path.read_text(encoding="utf-8")
+        text = re.sub(r"\?v=[0-9.]+", f"?v={version}", text)
+        path.write_text(text, encoding="utf-8")
+        print(f"{name} の ?v= を v={version} に更新しました。")
+
+    sw = FRONTEND_DIR / "sw.js"
+    text = sw.read_text(encoding="utf-8")
+    text = re.sub(r"icon-192\.png\?v=[0-9.]+", f"icon-192.png?v={version}", text)
+    sw.write_text(text, encoding="utf-8")
+    print(f"sw.js のアイコン URL を v={version} に更新しました。")
 
 
 def bump(version: str, kind: str) -> str:
@@ -80,6 +103,8 @@ def main() -> None:
             print(f"changelog.js に v{new_version} のスタブを追加しました。")
 
     CHANGELOG_FILE.write_text(content, encoding="utf-8")
+
+    sync_asset_versions(new_version)
 
 
 if __name__ == "__main__":
