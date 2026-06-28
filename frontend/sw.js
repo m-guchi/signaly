@@ -1,6 +1,6 @@
 'use strict'
 
-const CACHE_NAME = 'signaly-v1'
+const CACHE_NAME = 'signaly-v2'
 const ASSETS = ['./', './app.js', './style.css', './manifest.json', './icon.svg']
 
 self.addEventListener('install', (event) => {
@@ -25,11 +25,12 @@ self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
 
-  // API・SSE リクエストはキャッシュしない
+  // API・SSE・認証リクエストはキャッシュしない
   if (
     request.method !== 'GET' ||
     url.pathname.includes('/api/') ||
-    url.pathname.includes('/webhook/')
+    url.pathname.includes('/webhook/') ||
+    url.pathname.includes('/auth/')
   ) {
     return
   }

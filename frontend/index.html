@@ -32,6 +32,9 @@
       <nav id="channel-list" aria-label="チャンネル一覧">
         <div class="loading-text">読み込み中…</div>
       </nav>
+      <footer class="sidebar-footer">
+        <button id="version-btn" class="version-btn" title="更新履歴を見る">v…</button>
+      </footer>
     </aside>
 
     <main id="main">
@@ -42,6 +45,16 @@
       <div id="feed" role="log" aria-live="polite" aria-relevant="additions"></div>
       <div id="empty-state" class="empty-state" hidden>通知はまだありません</div>
     </main>
+  </div>
+
+  <div id="changelog-dialog" class="changelog-dialog" role="dialog" aria-modal="true" aria-label="更新履歴">
+    <div class="changelog-panel">
+      <div class="changelog-header">
+        <h2 class="changelog-title">更新履歴</h2>
+        <button id="changelog-close" class="changelog-close" aria-label="閉じる">✕</button>
+      </div>
+      <div id="changelog-list" class="changelog-list"></div>
+    </div>
   </div>
 
   <div id="login-overlay">
@@ -63,6 +76,7 @@
     </div>
   </div>
 
+  <script src="changelog.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

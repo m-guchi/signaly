@@ -275,6 +275,63 @@ notifBtn.addEventListener('click', async () => {
   updateNotifBtnState()
 })
 
+// ── Version / Changelog ──────────────────────────────────────────────────────
+
+const versionBtn = document.getElementById('version-btn')
+const changelogDialog = document.getElementById('changelog-dialog')
+const changelogClose = document.getElementById('changelog-close')
+
+if (typeof APP_VERSION !== 'undefined' && versionBtn) {
+  versionBtn.textContent = `v${APP_VERSION}`
+}
+
+function renderChangelog() {
+  const list = document.getElementById('changelog-list')
+  if (!list || typeof APP_CHANGELOG === 'undefined') return
+  list.innerHTML = ''
+  for (const entry of APP_CHANGELOG) {
+    const section = document.createElement('div')
+    section.className = 'cl-entry'
+
+    const heading = document.createElement('div')
+    heading.className = 'cl-heading'
+    const ver = document.createElement('span')
+    ver.className = 'cl-version'
+    ver.textContent = `v${entry.version}`
+    const date = document.createElement('span')
+    date.className = 'cl-date'
+    date.textContent = entry.date || ''
+    heading.appendChild(ver)
+    heading.appendChild(date)
+
+    const ul = document.createElement('ul')
+    ul.className = 'cl-changes'
+    for (const change of entry.changes) {
+      const li = document.createElement('li')
+      li.textContent = change
+      ul.appendChild(li)
+    }
+
+    section.appendChild(heading)
+    section.appendChild(ul)
+    list.appendChild(section)
+  }
+}
+
+renderChangelog()
+
+versionBtn?.addEventListener('click', () => {
+  changelogDialog?.classList.add('open')
+})
+
+changelogClose?.addEventListener('click', () => {
+  changelogDialog?.classList.remove('open')
+})
+
+changelogDialog?.addEventListener('click', (e) => {
+  if (e.target === changelogDialog) changelogDialog.classList.remove('open')
+})
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 const loginOverlay = document.getElementById('login-overlay')
