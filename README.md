@@ -166,15 +166,12 @@ GitHub Secrets には `OP_SERVICE_ACCOUNT_TOKEN` のみ登録します。
 op run --env-file=.env.tpl -- bash deploy/setup.sh
 ```
 
-`setup.sh` は venv 作成・**sudoers 登録**（GitHub Actions 用 passwordless sudo）・systemd 登録まで行います。
+`setup.sh` は venv 作成・user systemd 登録（`loginctl enable-linger` は初回のみ sudo）まで行います。GitHub Actions デプロイは **sudo 不要**です。
 
-sudoers だけ手動で入れる場合（`TARGET_DIR` とデプロイユーザーを置換）:
+初回のみ VPS に SSH して linger を有効化する場合:
 
 ```bash
-sed "s|@DEPLOY_USER@|$(whoami)|g; s|@TARGET_DIR@|/apps/signaly|g" \
-  deploy/signaly.sudoers.example | sudo tee /etc/sudoers.d/signaly-deploy > /dev/null
-sudo chmod 440 /etc/sudoers.d/signaly-deploy
-sudo visudo -cf /etc/sudoers.d/signaly-deploy
+sudo loginctl enable-linger "$(whoami)"
 ```
 
 Apache には `deploy/apache.conf` を VirtualHost に追記してください（本番ポート **8002**）。
