@@ -1,0 +1,18 @@
+# シークレット
+.env
+.env.local
+backend/channels.json
+
+# データ（VPS 上で生成されるログ）
+backend/data/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# エディタ
+.DS_Store
+*.swp

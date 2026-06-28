@@ -1,0 +1,56 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 1Password からシークレットを読み込む
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-to-environment: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          SSH_PRIVATE_KEY:   op://apps/Server/private_key
+          SSH_KNOWN_HOSTS:   op://apps/Server/known_hosts
+          SSH_HOST:          op://apps/Server/hostname
+          SSH_USER:          op://apps/Server/username
+          DISCORD_CI_WEBHOOK_URL: op://apps/discord_webhook/CI_URL
+
+      - name: SSH キーをセットアップ
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key:           ${{ env.SSH_PRIVATE_KEY }}
+          known_hosts:   ${{ env.SSH_KNOWN_HOSTS }}
+
+      - name: VPS にデプロイ
+        run: |
+          rsync -az --delete \
+            --exclude='.git' \
+            --exclude='.venv' \
+            --exclude='backend/data/' \
+            --exclude='backend/channels.json' \
+            ./ ${{ env.SSH_USER }}@${{ env.SSH_HOST }}:/apps/signaly/
+
+          ssh ${{ env.SSH_USER }}@${{ env.SSH_HOST }} bash << 'EOF'
+            set -e
+            cd /apps/signaly
+            .venv/bin/pip install --quiet -r backend/requirements.txt
+            sudo systemctl restart signaly
+          EOF
+
+      - name: Discord に通知
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ env.DISCORD_CI_WEBHOOK_URL }}
+          NOTIFY_APP:    Signaly
+          NOTIFY_KIND:   デプロイ
+          NOTIFY_STATUS: ${{ job.status }}
+          NOTIFY_JOB:    deploy
+        run: bash .github/scripts/discord-notify.sh
