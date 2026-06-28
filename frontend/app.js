@@ -837,6 +837,10 @@ function updateAllBadges() {
 async function selectChannel(name) {
   if (activeChannel === name) return
 
+  // SSE 接続前に保存（接続後の markChannelRead で上書きされないようにする）
+  const sinceLastRead = lastReadAt[name]
+  const pendingUnread = unread[name] || 0
+
   activeChannel = name
   saveLastChannel(name)
   updatePageUrl(name)
@@ -857,12 +861,12 @@ async function selectChannel(name) {
 
   // SSE を先に張り、履歴読み込み中の通知取りこぼしを防ぐ
   connectSSE(name)
-  await loadHistory(name)
+  await loadHistory(name, sinceLastRead, pendingUnread)
 
   closeSidebar()
 }
 
-async function loadHistory(channelName) {
+async function loadHistory(channelName, sinceLastRead, pendingUnread = 0) {
   showFeedLoading()
   try {
     const res = await fetch(apiUrl(`api/history/${channelName}`))
@@ -870,7 +874,7 @@ async function loadHistory(channelName) {
     if (!res.ok) {
       showFeedError(
         `読み込みに失敗しました (HTTP ${res.status})`,
-        () => loadHistory(channelName),
+        () => loadHistory(channelName, sinceLastRead, pendingUnread),
       )
       return
     }
@@ -884,6 +888,7 @@ async function loadHistory(channelName) {
     }
     let newestTs = 0
     let prevDateKey = null
+    let unreadToMark = sinceLastRead === undefined ? pendingUnread : 0
     // API は新しい順。appendChild で先頭が最新になる
     for (const entry of logs) {
       if (seenIds.has(entry.id)) continue
@@ -892,8 +897,13 @@ async function loadHistory(channelName) {
       if (prevDateKey !== null && prevDateKey !== dateKey) {
         feed.appendChild(createDateDivider(dateKey))
       }
-      feed.appendChild(createCard(entry))
       const ts = parseTimestamp(entry.timestamp)
+      const isNew = sinceLastRead !== undefined
+        ? ts > sinceLastRead
+        : unreadToMark > 0 && unreadToMark--
+      const card = createCard(entry, { isNew })
+      feed.appendChild(card)
+      if (isNew) scheduleNewCardFade(card)
       if (ts > newestTs) newestTs = ts
       prevDateKey = dateKey
     }
@@ -906,7 +916,7 @@ async function loadHistory(channelName) {
     const msg = err.name === 'AbortError' ? 'タイムアウト' : 'ネットワークエラー'
     showFeedError(
       `読み込みに失敗しました (${msg})`,
-      () => loadHistory(channelName),
+      () => loadHistory(channelName, sinceLastRead, pendingUnread),
     )
   }
 }
