@@ -1,8 +1,16 @@
 'use strict'
 
-const APP_VERSION = '1.1.8'
+const APP_VERSION = '1.1.9'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.1.9',
+    date: '2026-06-29',
+    changes: [
+      '設定の「有効」を押しても Push が未登録のままになる不具合を修正',
+      'Push 登録に失敗したとき、設定画面に原因が表示されるようになった',
+    ],
+  },
   {
     version: '1.1.8',
     date: '2026-06-29',
