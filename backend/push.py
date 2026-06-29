@@ -49,7 +49,15 @@ def push_vapid_healthy() -> Tuple[bool, Optional[str]]:
     if not push_configured():
         return False, "not_configured"
     try:
-        validate_push_config()
+        _load_vapid()
+        configured = (VAPID_PUBLIC_KEY or "").strip().rstrip("=")
+        if configured:
+            derived = _application_server_key_b64()
+            if derived.rstrip("=") != configured.rstrip("="):
+                logger.warning(
+                    "VAPID_PUBLIC_KEY が秘密鍵と一致しません。"
+                    "クライアントには秘密鍵から導出した公開鍵を返します"
+                )
         return True, None
     except Exception as exc:
         return False, str(exc)[:200]
