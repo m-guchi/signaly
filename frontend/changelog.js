@@ -1,8 +1,15 @@
 'use strict'
 
-const APP_VERSION = '1.1.9'
+const APP_VERSION = '1.1.10'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.1.10',
+    date: '2026-06-29',
+    changes: [
+      '本番環境で Push 通知の「有効」が失敗する不具合を修正',
+    ],
+  },
   {
     version: '1.1.9',
     date: '2026-06-29',
