@@ -19,12 +19,13 @@ class TestVapidHelpers(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(err, "not_configured")
 
-    @patch("push.validate_push_config")
+    @patch("push._load_vapid")
     @patch("push.push_configured", return_value=True)
-    def test_push_vapid_healthy_ok(self, _configured, _validate):
+    def test_push_vapid_healthy_ok(self, _configured, _load):
         ok, err = push_vapid_healthy()
         self.assertTrue(ok)
         self.assertIsNone(err)
+        _load.assert_called_once()
 
 
 class TestSendPushNotifications(unittest.TestCase):

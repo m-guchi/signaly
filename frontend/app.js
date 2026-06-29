@@ -1557,18 +1557,41 @@ async function syncPushSubscription() {
   }
 }
 
+async function parseHttpError(res, fallback) {
+  try {
+    const data = await res.json()
+    return parseApiError(data, fallback)
+  } catch {
+    return fallback
+  }
+}
+
 async function subscribePush(forceNew = false) {
-  if (!pushSupported()) return false
-  if (!('Notification' in window) || Notification.permission !== 'granted') return false
+  if (!pushSupported()) {
+    return { ok: false, message: 'この端末は Push 非対応です' }
+  }
+  if (!('Notification' in window) || Notification.permission !== 'granted') {
+    return { ok: false, message: '端末の通知が許可されていません' }
+  }
 
   try {
     setPushDisabledByUser(false)
+    await ensureServiceWorkerRegistered()
     const reg = await navigator.serviceWorker.ready
 
     const keyRes = await fetch(apiUrl('api/push/vapid-public-key'))
-    if (!keyRes.ok) return false
+    if (!keyRes.ok) {
+      pushSubscribed = false
+      return {
+        ok: false,
+        message: await parseHttpError(keyRes, 'Push 用の公開鍵を取得できませんでした'),
+      }
+    }
     const { publicKey } = await keyRes.json()
-    if (!publicKey) return false
+    if (!publicKey) {
+      pushSubscribed = false
+      return { ok: false, message: 'サーバーから公開鍵を取得できませんでした' }
+    }
 
     let sub = await reg.pushManager.getSubscription()
     if (sub && forceNew) {
@@ -1596,11 +1619,22 @@ async function subscribePush(forceNew = false) {
       }),
     })
 
-    pushSubscribed = res.ok
-    return pushSubscribed
-  } catch {
+    if (!res.ok) {
+      pushSubscribed = false
+      return {
+        ok: false,
+        message: await parseHttpError(res, 'Push のサーバー登録に失敗しました'),
+      }
+    }
+
+    pushSubscribed = true
+    return { ok: true }
+  } catch (err) {
     pushSubscribed = false
-    return false
+    const message = err?.name === 'NotAllowedError'
+      ? 'Push の許可が拒否されました'
+      : (err?.message || 'Push 登録に失敗しました')
+    return { ok: false, message }
   }
 }
 
@@ -1758,10 +1792,11 @@ async function sendServerTestPush() {
   }
 
   const reg = await navigator.serviceWorker.ready
-  if (!(await subscribePush(true))) {
+  const subResult = await subscribePush(true)
+  if (!subResult.ok) {
     return {
       ok: false,
-      message: 'Push 登録に失敗しました。「有効」を試してください。',
+      message: subResult.message || 'Push 登録に失敗しました。「有効」を試してください。',
       needsReregister: true,
     }
   }
@@ -2494,6 +2529,7 @@ async function checkAuth() {
 
 let swUpdatePending = false
 let swRefreshing = false
+let swRegistrationPromise = null
 
 function setupServiceWorkerAutoUpdate(registration) {
   registration.addEventListener('updatefound', () => {
@@ -2520,8 +2556,16 @@ function setupServiceWorkerAutoUpdate(registration) {
   setTimeout(checkForUpdates, 5000)
 }
 
+function ensureServiceWorkerRegistered() {
+  if (!('serviceWorker' in navigator)) return Promise.resolve(null)
+  if (!swRegistrationPromise) {
+    swRegistrationPromise = registerServiceWorker()
+  }
+  return swRegistrationPromise
+}
+
 async function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) return
+  if (!('serviceWorker' in navigator)) return null
 
   navigator.serviceWorker.addEventListener('message', (event) => {
     const msg = event.data
@@ -2552,8 +2596,10 @@ async function registerServiceWorker() {
       updateViaCache: 'none',
     })
     setupServiceWorkerAutoUpdate(registration)
+    return registration
   } catch {
     // 未対応ブラウザなど
+    return null
   }
 }
 
@@ -2571,7 +2617,7 @@ async function init() {
   if (loginLink) loginLink.href = apiUrl('auth/login')
 
   // SW 登録は初回 iOS PWA で遅くなりがちなので起動をブロックしない
-  void registerServiceWorker()
+  void ensureServiceWorkerRegistered()
 
   const cachedTree = loadChannelTreeCache()
   const startupChannel = resolveStartupChannel()

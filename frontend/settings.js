@@ -167,15 +167,29 @@ const SignalySettings = {
 
     document.getElementById('notif-enable-btn')?.addEventListener('click', async () => {
       const btn = document.getElementById('notif-enable-btn')
+      const resultEl = document.getElementById('notif-test-result')
       btn.disabled = true
+      if (resultEl) resultEl.hidden = true
       try {
         await Notification.requestPermission()
+        let result = { ok: false }
         if (Notification.permission === 'granted') {
-          await this.notifications.subscribePush(true)
+          result = await this.notifications.subscribePush(true)
         }
         this.updateSettingsBtnState()
         this.renderNotifSettings()
         this.notifications.onStateChange?.()
+        if (resultEl && Notification.permission === 'granted') {
+          if (result?.ok) {
+            resultEl.textContent = 'バックグラウンド通知を有効にしました。'
+            resultEl.className = 'notif-test-result notif-test-result--ok'
+            resultEl.hidden = false
+          } else if (result?.message) {
+            resultEl.textContent = result.message
+            resultEl.className = 'notif-test-result notif-test-result--error'
+            resultEl.hidden = false
+          }
+        }
       } finally {
         btn.disabled = false
       }
@@ -183,12 +197,25 @@ const SignalySettings = {
 
     document.getElementById('notif-reregister-btn')?.addEventListener('click', async () => {
       const btn = document.getElementById('notif-reregister-btn')
+      const resultEl = document.getElementById('notif-test-result')
       btn.disabled = true
+      if (resultEl) resultEl.hidden = true
       try {
-        await this.notifications.subscribePush(true)
+        const result = await this.notifications.subscribePush(true)
         this.updateSettingsBtnState()
         this.renderNotifSettings()
         this.notifications.onStateChange?.()
+        if (resultEl) {
+          if (result?.ok) {
+            resultEl.textContent = 'バックグラウンド通知を有効にしました。'
+            resultEl.className = 'notif-test-result notif-test-result--ok'
+            resultEl.hidden = false
+          } else if (result?.message) {
+            resultEl.textContent = result.message
+            resultEl.className = 'notif-test-result notif-test-result--error'
+            resultEl.hidden = false
+          }
+        }
       } finally {
         btn.disabled = false
       }
