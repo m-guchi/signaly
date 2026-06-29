@@ -1,8 +1,16 @@
 'use strict'
 
-const APP_VERSION = '1.1.7'
+const APP_VERSION = '1.1.8'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.1.8',
+    date: '2026-06-29',
+    changes: [
+      'Push 通知テストの失敗時に、原因がわかりやすいメッセージを表示するようになった',
+      '本番環境でも Push 登録が正しい鍵で行われるよう改善',
+    ],
+  },
   {
     version: '1.1.7',
     date: '2026-06-29',

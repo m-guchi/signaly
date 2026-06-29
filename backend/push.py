@@ -39,6 +39,22 @@ def push_configured() -> bool:
     return bool(VAPID_PUBLIC_KEY and VAPID_SUBJECT and (VAPID_PRIVATE_KEY or VAPID_PRIVATE_KEY_FILE))
 
 
+def get_application_server_key() -> str:
+    """クライアント subscribe 用の公開鍵（秘密鍵と必ずペア）"""
+    return _application_server_key_b64()
+
+
+def push_vapid_healthy() -> Tuple[bool, Optional[str]]:
+    """VAPID 鍵が送信に使えるか。 (ok, error_message)"""
+    if not push_configured():
+        return False, "not_configured"
+    try:
+        validate_push_config()
+        return True, None
+    except Exception as exc:
+        return False, str(exc)[:200]
+
+
 def _pem_bytes() -> bytes:
     if VAPID_PRIVATE_KEY_FILE:
         path = Path(VAPID_PRIVATE_KEY_FILE)
@@ -185,12 +201,19 @@ def _push_error_hint(exc: WebPushException) -> Optional[str]:
     return message[:120] if message else None
 
 
+def _normalize_push_key(value: str) -> str:
+    return (value or "").strip()
+
+
 def _deliver_push_result(
     sub: Dict[str, str], payload: str, vapid: Vapid02
 ) -> Tuple[bool, Optional[int], Optional[str]]:
     subscription_info = {
         "endpoint": sub["endpoint"],
-        "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},
+        "keys": {
+            "p256dh": _normalize_push_key(sub["p256dh"]),
+            "auth": _normalize_push_key(sub["auth"]),
+        },
     }
     try:
         webpush(
@@ -198,7 +221,8 @@ def _deliver_push_result(
             data=payload,
             vapid_private_key=vapid,
             vapid_claims=dict(_vapid_claims_for_endpoint(sub["endpoint"])),
-            ttl=60,
+            ttl=300,
+            timeout=30,
         )
         return True, None, None
     except WebPushException as exc:
@@ -213,6 +237,8 @@ def _deliver_push_result(
         )
         if status in (403, 404, 410):
             _delete_subscription(sub["id"])
+        if not hint and status:
+            hint = f"HTTP {status}"
         return False, status, hint
     except Exception as exc:
         logger.exception("Web Push error: %s", sub["endpoint"][:60])

@@ -3,7 +3,28 @@
 import unittest
 from unittest.mock import patch
 
-from push import send_push_notifications, send_test_push_to_user, VAPID_SUBJECT
+from push import (
+    get_application_server_key,
+    push_vapid_healthy,
+    send_push_notifications,
+    send_test_push_to_user,
+    VAPID_SUBJECT,
+)
+
+
+class TestVapidHelpers(unittest.TestCase):
+    @patch("push.push_configured", return_value=False)
+    def test_push_vapid_healthy_not_configured(self, _configured):
+        ok, err = push_vapid_healthy()
+        self.assertFalse(ok)
+        self.assertEqual(err, "not_configured")
+
+    @patch("push.validate_push_config")
+    @patch("push.push_configured", return_value=True)
+    def test_push_vapid_healthy_ok(self, _configured, _validate):
+        ok, err = push_vapid_healthy()
+        self.assertTrue(ok)
+        self.assertIsNone(err)
 
 
 class TestSendPushNotifications(unittest.TestCase):
