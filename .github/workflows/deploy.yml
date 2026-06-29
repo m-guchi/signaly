@@ -133,6 +133,19 @@ jobs:
               printf '%s=%s\n' "\$key" "\$value" >> .env
             }
 
+            write_vapid_private_key() {
+              printf '%s' "\$1" | base64 -d > backend/vapid_private.pem
+              chmod 600 backend/vapid_private.pem
+              touch .env
+              if grep -q '^VAPID_PRIVATE_KEY=' .env; then
+                grep -v '^VAPID_PRIVATE_KEY=' .env > .env.tmp && mv .env.tmp .env
+              fi
+              if grep -q '^VAPID_PRIVATE_KEY_FILE=' .env; then
+                grep -v '^VAPID_PRIVATE_KEY_FILE=' .env > .env.tmp && mv .env.tmp .env
+              fi
+              printf '%s=%s\n' 'VAPID_PRIVATE_KEY_FILE' 'vapid_private.pem' >> .env
+            }
+
             sync_env_var GOOGLE_CLIENT_ID     '${GOOGLE_CLIENT_ID_B64}'
             sync_env_var GOOGLE_CLIENT_SECRET '${GOOGLE_CLIENT_SECRET_B64}'
             sync_env_var GOOGLE_REDIRECT_URI  '${GOOGLE_REDIRECT_URI_B64}'
@@ -141,7 +154,7 @@ jobs:
             sync_env_var SECRET_KEY           '${SECRET_KEY_B64}'
             sync_env_var LOGIN_WEBHOOK_URL    '${LOGIN_WEBHOOK_URL_B64}'
             sync_env_var VAPID_PUBLIC_KEY     '${VAPID_PUBLIC_KEY_B64}'
-            sync_env_var VAPID_PRIVATE_KEY    '${VAPID_PRIVATE_KEY_B64}'
+            write_vapid_private_key           '${VAPID_PRIVATE_KEY_B64}'
             sync_env_var VAPID_SUBJECT        '${VAPID_SUBJECT_B64}'
             sync_env_var DB_NAME              '${DB_NAME_B64}'
             sync_env_var DB_USER              '${DB_USER_B64}'

@@ -5,6 +5,7 @@
 backend/channels.json
 backend/private_key.pem
 backend/public_key.pem
+backend/vapid_private.pem
 private_key.pem
 public_key.pem
 

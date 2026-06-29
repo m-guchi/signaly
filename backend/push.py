@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
-from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat, load_pem_private_key
+from cryptography.hazmat.primitives.serialization import (
+    Encoding,
+    PublicFormat,
+    load_der_private_key,
+    load_pem_private_key,
+)
 from py_vapid import Vapid02
 from pywebpush import WebPushException, webpush
 
@@ -60,23 +65,104 @@ def push_vapid_healthy() -> Tuple[bool, Optional[str]]:
                 )
         return True, None
     except Exception as exc:
-        return False, str(exc)[:200]
+        try:
+            text = _vapid_private_key_text()
+        except Exception:
+            text = ""
+        return False, _friendly_key_load_error(text, exc)[:200]
 
 
-def _pem_bytes() -> bytes:
+def _normalize_key_text(raw: str) -> str:
+    s = (raw or "").strip().strip("'").strip('"')
+    s = s.replace("\\r\\n", "\n").replace("\\n", "\n")
+    s = s.replace("\r\n", "\n").replace("\r", "\n")
+    return s
+
+
+def _looks_like_application_server_key(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text)
+    if "BEGIN" in compact:
+        return False
+    return bool(re.fullmatch(r"[A-Za-z0-9_-]{80,120}", compact))
+
+
+def _looks_like_truncated_pem(text: str) -> bool:
+    stripped = text.strip()
+    return stripped.startswith("-----BEGIN") and "END" not in stripped
+
+
+def _friendly_key_load_error(text: str, exc: Exception) -> str:
+    if isinstance(exc, ValueError) and str(exc).startswith("VAPID"):
+        return str(exc)
+    if _looks_like_truncated_pem(text):
+        return (
+            "VAPID 秘密鍵が途中で切れています。"
+            "1Password の vapid-private-key を確認し、デプロイを再実行してください"
+        )
+    msg = str(exc)
+    if "Could not deserialize" in msg or "Unable to load PEM" in msg:
+        return (
+            "VAPID 秘密鍵の形式が正しくありません。"
+            "1Password の vapid-private-key に gen_vapid_keys.py の VAPID_PRIVATE_KEY 行を保存してください"
+        )
+    return msg
+
+
+def _vapid_private_key_text() -> str:
     if VAPID_PRIVATE_KEY_FILE:
         path = Path(VAPID_PRIVATE_KEY_FILE)
         if path.is_file():
-            return path.read_bytes()
-    raw = (VAPID_PRIVATE_KEY or "").strip().strip("'").strip('"').replace("\\n", "\n")
-    if not raw:
+            return _normalize_key_text(path.read_text())
+    raw = VAPID_PRIVATE_KEY or ""
+    if not raw.strip():
         raise ValueError("VAPID private key is not configured")
-    return raw.encode()
+    return _normalize_key_text(raw)
+
+
+def _parse_private_key(text: str):
+    if _looks_like_application_server_key(text):
+        raise ValueError(
+            "VAPID_PRIVATE_KEY に公開鍵（Application Server Key）が設定されています。"
+            "秘密鍵 PEM を設定してください"
+        )
+    if _looks_like_truncated_pem(text):
+        raise ValueError(
+            "VAPID 秘密鍵が途中で切れています。"
+            "1Password の vapid-private-key を確認してください"
+        )
+
+    try:
+        return load_pem_private_key(text.encode(), password=None)
+    except ValueError:
+        pass
+
+    compact = re.sub(r"\s+", "", text)
+    if compact and "BEGIN" not in text:
+        try:
+            der = base64.b64decode(compact, validate=True)
+            return load_der_private_key(der, password=None)
+        except Exception:
+            pass
+        for label in ("PRIVATE KEY", "EC PRIVATE KEY"):
+            body = "\n".join(compact[i : i + 64] for i in range(0, len(compact), 64))
+            pem = f"-----BEGIN {label}-----\n{body}\n-----END {label}-----\n"
+            try:
+                return load_pem_private_key(pem.encode(), password=None)
+            except ValueError:
+                continue
+
+    raise ValueError(
+        "VAPID 秘密鍵の形式が正しくありません。"
+        "scripts/gen_vapid_keys.py の出力形式で設定してください"
+    )
+
+
+def _pem_bytes() -> bytes:
+    return _vapid_private_key_text().encode()
 
 
 def _load_vapid() -> Vapid02:
-    # py_vapid.from_pem は標準 PEM を正しく読めないため cryptography で読み込む
-    private_key = load_pem_private_key(_pem_bytes(), password=None)
+    private_key = _parse_private_key(_vapid_private_key_text())
     return Vapid02(private_key=private_key)
 
 

@@ -1,15 +1,99 @@
 """push.py のユニットテスト"""
 
+import base64
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat, PublicFormat
+
 from push import (
-    get_application_server_key,
+    _looks_like_application_server_key,
+    _looks_like_truncated_pem,
+    _normalize_key_text,
+    _parse_private_key,
     push_vapid_healthy,
     send_push_notifications,
     send_test_push_to_user,
     VAPID_SUBJECT,
 )
+
+
+def _sample_private_key():
+    return ec.generate_private_key(ec.SECP256R1())
+
+
+def _sample_pkcs8_pem(key=None) -> str:
+    key = key or _sample_private_key()
+    return key.private_bytes(
+        Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()
+    ).decode()
+
+
+def _sample_ec_pem(key=None) -> str:
+    key = key or _sample_private_key()
+    return key.private_bytes(
+        Encoding.PEM, PrivateFormat.TraditionalOpenSSL, NoEncryption()
+    ).decode()
+
+
+class TestPrivateKeyParsing(unittest.TestCase):
+    def test_normalize_key_text_unescapes_newlines(self):
+        pem = _sample_pkcs8_pem()
+        escaped = pem.replace("\n", "\\n")
+        self.assertIn("\n", _normalize_key_text(escaped))
+        self.assertNotIn("\\n", _normalize_key_text(escaped))
+
+    def test_parse_pkcs8_pem(self):
+        pem = _sample_pkcs8_pem()
+        key = _parse_private_key(pem)
+        self.assertEqual(key.key_size, 256)
+
+    def test_parse_ec_pem(self):
+        pem = _sample_ec_pem()
+        key = _parse_private_key(pem)
+        self.assertEqual(key.key_size, 256)
+
+    def test_parse_escaped_one_line_pem(self):
+        pem = _sample_pkcs8_pem().replace("\n", "\\n")
+        key = _parse_private_key(_normalize_key_text(pem))
+        self.assertEqual(key.key_size, 256)
+
+    def test_parse_pkcs8_der_without_headers(self):
+        key = _sample_private_key()
+        der_b64 = base64.b64encode(
+            key.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption())
+        ).decode()
+        parsed = _parse_private_key(der_b64)
+        self.assertEqual(parsed.key_size, 256)
+
+    def test_rejects_application_server_key(self):
+        key = _sample_private_key()
+        pub_bytes = key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+        app_key = base64.urlsafe_b64encode(pub_bytes).decode().rstrip("=")
+        self.assertTrue(_looks_like_application_server_key(app_key))
+        with self.assertRaisesRegex(ValueError, "公開鍵"):
+            _parse_private_key(app_key)
+
+    def test_detects_truncated_pem(self):
+        self.assertTrue(_looks_like_truncated_pem("-----BEGIN PRIVATE KEY-----"))
+        self.assertFalse(_looks_like_truncated_pem(_sample_pkcs8_pem()))
+
+    def test_vapid_private_key_text_from_file(self):
+        pem = _sample_pkcs8_pem()
+        with tempfile.TemporaryDirectory() as tmp:
+            pem_path = Path(tmp) / "vapid_private.pem"
+            pem_path.write_text(pem)
+            import push as push_module
+
+            with patch.object(push_module, "VAPID_PRIVATE_KEY", ""), patch.object(
+                push_module, "VAPID_PRIVATE_KEY_FILE", str(pem_path)
+            ):
+                text = push_module._vapid_private_key_text()
+                key = push_module._parse_private_key(text)
+                self.assertEqual(key.key_size, 256)
 
 
 class TestVapidHelpers(unittest.TestCase):
