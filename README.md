@@ -133,7 +133,7 @@ Webhook URL はログイン後の **Webhook URL** 画面で確認できます。
 
 ## デプロイ
 
-`main` ブランチへの push（または Actions から手動実行）で GitHub Actions が VPS へ rsync デプロイします（[DESIGN_GUIDE](../_docs/DESIGN_GUIDE.md) 参照）。
+`main` ブランチへの push（または Actions から手動実行）で GitHub Actions が VPS へ rsync デプロイします（[設計ガイド](https://github.com/m-guchi/docs/blob/main/README.md) 参照）。
 
 ```
 main へ push / workflow_dispatch
@@ -226,4 +226,12 @@ git commit -m "v1.0.1 をリリースする。"
 
 ## 設計ガイド
 
-VPS 構成・ポート規則・1Password 運用など共通ルールは [../_docs/DESIGN_GUIDE.md](../_docs/DESIGN_GUIDE.md) を参照してください。
+VPS 構成・ポート規則・1Password 運用など共通ルールは [m-guchi/docs](https://github.com/m-guchi/docs/blob/main/README.md) を参照してください。
+
+## CI/CD の既知の課題
+
+> 2026-06-29 時点で確認された課題です。対応が完了したら削除または更新してください。
+
+| 優先度 | 課題 | 対象ファイル |
+|--------|------|-------------|
+| 要確認 | **`ci.yml` の backend テストで MySQL サービスコンテナが未定義** — `DB_HOST: 127.0.0.1` / `DB_PORT: 3306` を設定しているが、MySQL サービスコンテナの `services` 定義がない。テストが実際に DB 接続する場合は CI が通らない。`unittest.mock` で完結しているなら問題なし（動作確認が必要） | `.github/workflows/ci.yml` |

@@ -1,8 +1,15 @@
 'use strict'
 
-const APP_VERSION = '1.1.10'
+const APP_VERSION = '1.1.11'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.1.11',
+    date: '2026-07-05',
+    changes: [
+      'チャンネルを開いていないのに新着の目印が消えてしまう不具合を修正',
+    ],
+  },
   {
     version: '1.1.10',
     date: '2026-06-29',
