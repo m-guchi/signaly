@@ -45,6 +45,16 @@ function updatePageUrl(channelName) {
   history.replaceState(null, '', url)
 }
 
+const HIGHLIGHT_FADE_MS = 8000
+
+const LAST_READ_KEY = 'signaly-last-read'
+const LAST_CHANNEL_KEY = 'signaly-last-channel'
+const UNREAD_KEY = 'signaly-unread'
+const PUSH_DISABLED_KEY = 'signaly-push-disabled'
+const CHANNEL_TREE_KEY = 'signaly-channel-tree'
+const UNREAD_POLL_MS = 15000
+const NEW_CARD_FADE_MS = 60000
+
 let activeChannel = null
 let channelsByName = {}
 let eventSource = null
@@ -58,16 +68,6 @@ let pendingNewCount = 0
 let pendingHighlightId = null
 let notificationSettings = { channels: {}, groups: {} }
 let notificationPrefsReady = false
-
-const HIGHLIGHT_FADE_MS = 8000
-
-const LAST_READ_KEY = 'signaly-last-read'
-const LAST_CHANNEL_KEY = 'signaly-last-channel'
-const UNREAD_KEY = 'signaly-unread'
-const PUSH_DISABLED_KEY = 'signaly-push-disabled'
-const CHANNEL_TREE_KEY = 'signaly-channel-tree'
-const UNREAD_POLL_MS = 15000
-const NEW_CARD_FADE_MS = 60000
 
 // ── DOM ──────────────────────────────────────────────────────────────────────
 
@@ -1032,7 +1032,6 @@ async function selectChannel(name) {
   activeChannel = name
   saveLastChannel(name)
   updatePageUrl(name)
-  setChannelUnread(name, 0)
   pendingNewCount = 0
   if (newNotifBanner) newNotifBanner.hidden = true
 
