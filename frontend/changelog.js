@@ -1,8 +1,16 @@
 'use strict'
 
-const APP_VERSION = '1.2.0'
+const APP_VERSION = '1.2.1'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.2.1',
+    date: '2026-07-07',
+    changes: [
+      '「すべて既読にする」ボタンを押したときに完了メッセージが表示されない不具合を修正',
+      'グループの見出しに未読件数のバッジを表示するようになった',
+    ],
+  },
   {
     version: '1.2.0',
     date: '2026-07-07',
