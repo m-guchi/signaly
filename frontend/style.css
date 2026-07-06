@@ -1995,6 +1995,16 @@ html, body {
   color: var(--accent);
 }
 
+.color-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-left: 4px;
+  vertical-align: middle;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
 .docs-error {
   color: var(--danger, #ed4245);
 }
