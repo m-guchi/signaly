@@ -40,7 +40,7 @@ const SignalyMarkdown = {
   renderTable(rows) {
     if (rows.length < 2) return ''
     const header = rows[0]
-    const body = rows.slice(2)
+    const body = rows.slice(1)
     let html = '<table><thead><tr>'
     for (const cell of header) {
       html += `<th>${this.inline(cell)}</th>`
