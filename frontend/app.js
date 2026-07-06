@@ -516,6 +516,50 @@ function renderFieldValue(raw) {
     .replace(/:rocket:/g, '🚀')
 }
 
+const NOTIF_DELETE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <polyline points="3 6 5 6 21 6"/>
+  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+  <path d="M10 11v6"/>
+  <path d="M14 11v6"/>
+  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+</svg>`
+
+async function deleteNotification(id) {
+  if (!confirm('この通知を削除しますか？')) return
+  try {
+    const res = await fetch(apiUrl(`api/notifications/${id}`), { method: 'DELETE' })
+    if (!res.ok && res.status !== 404) {
+      alert('削除に失敗しました')
+      return
+    }
+  } catch {
+    alert('削除に失敗しました（ネットワークエラー）')
+    return
+  }
+  removeNotificationCard(id)
+}
+
+function removeNotificationCard(id) {
+  seenIds.delete(id)
+  const card = feed.querySelector(`.notif-card[data-id="${CSS.escape(id)}"]`)
+  if (!card) return
+  const dateKey = card.dataset.date
+  card.remove()
+  if (dateKey && !feed.querySelector(`.notif-card[data-date="${CSS.escape(dateKey)}"]`)) {
+    feed.querySelector(`.feed-date-divider[data-date="${CSS.escape(dateKey)}"]`)?.remove()
+  }
+  if (emptyState && !feed.querySelector('.notif-card')) {
+    emptyState.hidden = false
+  }
+}
+
+function clearFeedForActiveChannel() {
+  seenIds.clear()
+  feed.innerHTML = ''
+  if (feedStickyDate) feedStickyDate.hidden = true
+  if (emptyState) emptyState.hidden = false
+}
+
 function createCard(entry, { isNew = false } = {}) {
   const card = document.createElement('div')
   card.className = 'notif-card' + (isNew ? ' notif-card--new' : '')
@@ -548,6 +592,19 @@ function createCard(entry, { isNew = false } = {}) {
   }
 
   header.appendChild(time)
+
+  const deleteBtn = document.createElement('button')
+  deleteBtn.type = 'button'
+  deleteBtn.className = 'notif-delete-btn'
+  deleteBtn.title = '通知を削除'
+  deleteBtn.setAttribute('aria-label', '通知を削除')
+  deleteBtn.innerHTML = NOTIF_DELETE_ICON
+  deleteBtn.addEventListener('click', (e) => {
+    e.stopPropagation()
+    void deleteNotification(entry.id)
+  })
+  header.appendChild(deleteBtn)
+
   card.appendChild(header)
 
   if (entry.message) {
@@ -1358,6 +1415,20 @@ function connectSSE(channelName) {
     // デスクトップ通知
     void showDesktopNotification(entry)
   }
+
+  es.addEventListener('delete', (event) => {
+    let data
+    try {
+      data = JSON.parse(event.data)
+    } catch {
+      return
+    }
+    if (activeChannel === channelName) removeNotificationCard(data.id)
+  })
+
+  es.addEventListener('clear', () => {
+    if (activeChannel === channelName) clearFeedForActiveChannel()
+  })
 
   es.onerror = () => {
     if (activeChannel === channelName) setStatus('disconnected')
@@ -2376,12 +2447,18 @@ const channelSettingsCopy = document.getElementById('channel-settings-copy')
 const channelSettingsRevealWebhook = document.getElementById('channel-settings-reveal-webhook')
 const channelSettingsWebhookSection = document.getElementById('channel-settings-webhook-section')
 const channelSettingsDelete = document.getElementById('channel-settings-delete')
+const channelSettingsClear = document.getElementById('channel-settings-clear')
 const channelSettingsNotifSegment = document.getElementById('channel-settings-notif-segment')
 const channelDeleteDialog = document.getElementById('channel-delete-dialog')
 const channelDeleteName = document.getElementById('channel-delete-name')
 const channelDeleteError = document.getElementById('channel-delete-error')
 const channelDeleteCancel = document.getElementById('channel-delete-cancel')
 const channelDeleteConfirm = document.getElementById('channel-delete-confirm')
+const notificationsClearDialog = document.getElementById('notifications-clear-dialog')
+const notificationsClearName = document.getElementById('notifications-clear-name')
+const notificationsClearError = document.getElementById('notifications-clear-error')
+const notificationsClearCancel = document.getElementById('notifications-clear-cancel')
+const notificationsClearConfirm = document.getElementById('notifications-clear-confirm')
 
 let channelSettingsId = null
 let channelSettingsOriginalName = null
@@ -2394,6 +2471,7 @@ function resetChannelSettingsDialog() {
   hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy)
   channelSettingsRenameBtn.disabled = false
   channelSettingsDelete.disabled = false
+  channelSettingsClear.disabled = false
   setNotifSegmentDisabled(channelSettingsNotifSegment, false)
 }
 
@@ -2421,7 +2499,11 @@ function closeChannelSettingsDialog() {
 channelSettingsClose?.addEventListener('click', closeChannelSettingsDialog)
 
 channelSettingsDialog?.addEventListener('click', (e) => {
-  if (e.target === channelSettingsDialog && !channelDeleteDialog?.classList.contains('open')) {
+  if (
+    e.target === channelSettingsDialog
+    && !channelDeleteDialog?.classList.contains('open')
+    && !notificationsClearDialog?.classList.contains('open')
+  ) {
     closeChannelSettingsDialog()
   }
 })
@@ -2484,6 +2566,10 @@ function closeChannelDeleteDialog() {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && channelDeleteDialog?.classList.contains('open')) {
     closeChannelDeleteDialog()
+    return
+  }
+  if (e.key === 'Escape' && notificationsClearDialog?.classList.contains('open')) {
+    closeNotificationsClearDialog()
     return
   }
   if (e.key === 'Escape' && channelSettingsDialog?.classList.contains('open')) {
@@ -2608,6 +2694,71 @@ channelDeleteConfirm?.addEventListener('click', async () => {
     channelDeleteCancel.disabled = false
     channelSettingsDelete.disabled = false
     channelSettingsRenameBtn.disabled = false
+  }
+})
+
+function openNotificationsClearDialog() {
+  if (!channelSettingsOriginalName) return
+  notificationsClearName.textContent = channelSettingsOriginalName
+  notificationsClearError.hidden = true
+  notificationsClearError.textContent = ''
+  notificationsClearConfirm.disabled = false
+  notificationsClearCancel.disabled = false
+  SignalyDialog.open(notificationsClearDialog, { focusEl: notificationsClearCancel })
+}
+
+function closeNotificationsClearDialog() {
+  SignalyDialog.close(notificationsClearDialog)
+  notificationsClearError.hidden = true
+  notificationsClearError.textContent = ''
+  notificationsClearConfirm.disabled = false
+  notificationsClearCancel.disabled = false
+}
+
+channelSettingsClear?.addEventListener('click', () => {
+  if (!channelSettingsId || !channelSettingsOriginalName) return
+  openNotificationsClearDialog()
+})
+
+notificationsClearCancel?.addEventListener('click', closeNotificationsClearDialog)
+
+notificationsClearDialog?.addEventListener('click', (e) => {
+  if (e.target === notificationsClearDialog) closeNotificationsClearDialog()
+})
+
+notificationsClearConfirm?.addEventListener('click', async () => {
+  if (!channelSettingsId || !channelSettingsOriginalName) return
+
+  notificationsClearError.hidden = true
+  notificationsClearConfirm.disabled = true
+  notificationsClearCancel.disabled = true
+  channelSettingsClear.disabled = true
+
+  try {
+    const res = await fetch(apiUrl(`api/channels/${channelSettingsId}/notifications`), {
+      method: 'DELETE',
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      notificationsClearError.textContent = parseApiError(data, '削除に失敗しました')
+      notificationsClearError.hidden = false
+      return
+    }
+
+    const clearedName = channelSettingsOriginalName
+    closeNotificationsClearDialog()
+
+    if (activeChannel === clearedName) {
+      clearFeedForActiveChannel()
+      markChannelRead(clearedName)
+    }
+  } catch {
+    notificationsClearError.textContent = 'ネットワークエラーが発生しました'
+    notificationsClearError.hidden = false
+  } finally {
+    notificationsClearConfirm.disabled = false
+    notificationsClearCancel.disabled = false
+    channelSettingsClear.disabled = false
   }
 })
 
