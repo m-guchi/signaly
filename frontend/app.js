@@ -129,6 +129,39 @@ mobileSidebarMq.addEventListener('change', () => {
   if (!isMobileSidebar()) closeSidebar()
 })
 
+// ── 画面左端の右スワイプでサイドバーを開く ──────────────────────────────────
+
+const EDGE_SWIPE_ZONE = 24
+const EDGE_SWIPE_THRESHOLD = 40
+
+let edgeSwipeStart = null
+
+document.addEventListener('touchstart', (e) => {
+  if (!isMobileSidebar() || sidebar.classList.contains('sidebar--open')) return
+  const touch = e.touches[0]
+  if (touch.clientX > EDGE_SWIPE_ZONE) return
+  edgeSwipeStart = { x: touch.clientX, y: touch.clientY }
+}, { passive: true })
+
+document.addEventListener('touchmove', (e) => {
+  if (!edgeSwipeStart) return
+  const touch = e.touches[0]
+  const dx = touch.clientX - edgeSwipeStart.x
+  const dy = touch.clientY - edgeSwipeStart.y
+  if (Math.abs(dy) > Math.abs(dx)) {
+    edgeSwipeStart = null
+    return
+  }
+  if (dx > EDGE_SWIPE_THRESHOLD) {
+    setSidebarOpen(true)
+    edgeSwipeStart = null
+  }
+}, { passive: true })
+
+document.addEventListener('touchend', () => {
+  edgeSwipeStart = null
+})
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function parseTimestamp(isoString) {
