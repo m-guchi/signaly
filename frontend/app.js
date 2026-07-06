@@ -83,6 +83,7 @@ const feedStateRetry = document.getElementById('feed-state-retry')
 const emptyState = document.getElementById('empty-state')
 const newNotifBanner = document.getElementById('new-notif-banner')
 const channelTitle = document.getElementById('channel-title')
+const channelSettingsHeaderBtn = document.getElementById('channel-settings-header-btn')
 const statusEl = document.getElementById('status')
 const sidebar = document.getElementById('sidebar')
 const sidebarToggle = document.getElementById('sidebar-toggle')
@@ -870,6 +871,10 @@ function closeSearchDialog() {
   SignalyDialog.close(searchDialog)
 }
 
+channelSettingsHeaderBtn?.addEventListener('click', () => {
+  if (activeChannel) openChannelSettings(activeChannel)
+})
+
 searchBtn?.addEventListener('click', openSearchDialog)
 searchClose?.addEventListener('click', closeSearchDialog)
 searchDialog?.addEventListener('click', (e) => {
@@ -1206,6 +1211,7 @@ function renderChannelTree(data, selectName = null, options = {}) {
     channelList.innerHTML = '<div class="loading-text">グループを作成してチャンネルを追加</div>'
     activeChannel = null
     channelTitle.textContent = 'チャンネルを選択'
+    if (channelSettingsHeaderBtn) channelSettingsHeaderBtn.hidden = true
     hideFeedState()
     return
   }
@@ -1379,6 +1385,7 @@ async function selectChannel(name) {
   setActiveChannelRow(name)
   updateAllBadges()
   channelTitle.textContent = `# ${name}`
+  if (channelSettingsHeaderBtn) channelSettingsHeaderBtn.hidden = false
   feed.innerHTML = ''
   if (feedStickyDate) feedStickyDate.hidden = true
   if (emptyState) emptyState.hidden = true
