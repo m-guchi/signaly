@@ -524,19 +524,69 @@ const NOTIF_DELETE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill=
   <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
 </svg>`
 
-async function deleteNotification(id) {
-  if (!confirm('この通知を削除しますか？')) return
+const notificationDeleteDialog = document.getElementById('notification-delete-dialog')
+const notificationDeleteError = document.getElementById('notification-delete-error')
+const notificationDeleteCancel = document.getElementById('notification-delete-cancel')
+const notificationDeleteConfirm = document.getElementById('notification-delete-confirm')
+
+let pendingDeleteNotificationId = null
+
+function openNotificationDeleteDialog(id) {
+  pendingDeleteNotificationId = id
+  notificationDeleteError.hidden = true
+  notificationDeleteError.textContent = ''
+  notificationDeleteConfirm.disabled = false
+  notificationDeleteCancel.disabled = false
+  SignalyDialog.open(notificationDeleteDialog, { focusEl: notificationDeleteCancel })
+}
+
+function closeNotificationDeleteDialog() {
+  SignalyDialog.close(notificationDeleteDialog)
+  pendingDeleteNotificationId = null
+  notificationDeleteError.hidden = true
+  notificationDeleteError.textContent = ''
+}
+
+notificationDeleteCancel?.addEventListener('click', closeNotificationDeleteDialog)
+
+notificationDeleteDialog?.addEventListener('click', (e) => {
+  if (e.target === notificationDeleteDialog) closeNotificationDeleteDialog()
+})
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && notificationDeleteDialog?.classList.contains('open')) {
+    closeNotificationDeleteDialog()
+  }
+})
+
+notificationDeleteConfirm?.addEventListener('click', async () => {
+  const id = pendingDeleteNotificationId
+  if (!id) return
+
+  notificationDeleteError.hidden = true
+  notificationDeleteConfirm.disabled = true
+  notificationDeleteCancel.disabled = true
+
   try {
     const res = await fetch(apiUrl(`api/notifications/${id}`), { method: 'DELETE' })
     if (!res.ok && res.status !== 404) {
-      alert('削除に失敗しました')
+      notificationDeleteError.textContent = '削除に失敗しました'
+      notificationDeleteError.hidden = false
       return
     }
+    removeNotificationCard(id)
+    closeNotificationDeleteDialog()
   } catch {
-    alert('削除に失敗しました（ネットワークエラー）')
-    return
+    notificationDeleteError.textContent = 'ネットワークエラーが発生しました'
+    notificationDeleteError.hidden = false
+  } finally {
+    notificationDeleteConfirm.disabled = false
+    notificationDeleteCancel.disabled = false
   }
-  removeNotificationCard(id)
+})
+
+function deleteNotification(id) {
+  openNotificationDeleteDialog(id)
 }
 
 function removeNotificationCard(id) {
