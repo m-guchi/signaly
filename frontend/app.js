@@ -1376,6 +1376,7 @@ function markAllChannelsRead() {
   for (const name of allChannelNames()) {
     if (unread[name]) markChannelRead(name)
   }
+  closeSidebar()
   showToast('既読にしました')
 }
 
