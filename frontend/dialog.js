@@ -30,11 +30,30 @@ const SignalyDialog = {
 
     this._unbindViewport(dialog)
 
+    const clearOverride = () => {
+      dialog.style.top = ''
+      dialog.style.left = ''
+      dialog.style.right = ''
+      dialog.style.bottom = ''
+      dialog.style.width = ''
+      dialog.style.height = ''
+    }
+
     const sync = () => {
       if (!dialog.classList.contains('open')) return
       const vv = window.visualViewport
       // 自動ズーム（scale !== 1）ではレイアウトを追従させない
       if (vv.scale !== 1) return
+
+      // キーボード表示中でなければ CSS（100dvh）に任せる。
+      // 常に上書きすると、遷移中の一時的な値を拾って画面上部に
+      // 張り付いたまま戻らなくなることがある。
+      const keyboardOpen = window.innerHeight - vv.height > 150
+      if (!keyboardOpen) {
+        clearOverride()
+        return
+      }
+
       dialog.style.top = `${vv.offsetTop}px`
       dialog.style.left = `${vv.offsetLeft}px`
       dialog.style.right = 'auto'
@@ -51,12 +70,7 @@ const SignalyDialog = {
     this._cleanups.set(dialog, () => {
       vv.removeEventListener('resize', sync)
       vv.removeEventListener('scroll', sync)
-      dialog.style.top = ''
-      dialog.style.left = ''
-      dialog.style.right = ''
-      dialog.style.bottom = ''
-      dialog.style.width = ''
-      dialog.style.height = ''
+      clearOverride()
       this._cleanups.delete(dialog)
     })
   },
