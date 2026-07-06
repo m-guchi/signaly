@@ -133,9 +133,8 @@ mobileSidebarMq.addEventListener('change', () => {
   if (!isMobileSidebar()) closeSidebar()
 })
 
-// ── 画面左端の右スワイプでサイドバーを開く ──────────────────────────────────
+// ── 画面左半分の右スワイプでサイドバーを開く ──────────────────────────────────
 
-const EDGE_SWIPE_ZONE = 24
 const EDGE_SWIPE_THRESHOLD = 40
 
 let edgeSwipeStart = null
@@ -143,7 +142,7 @@ let edgeSwipeStart = null
 document.addEventListener('touchstart', (e) => {
   if (!isMobileSidebar() || sidebar.classList.contains('sidebar--open')) return
   const touch = e.touches[0]
-  if (touch.clientX > EDGE_SWIPE_ZONE) return
+  if (touch.clientX > window.innerWidth / 2) return
   edgeSwipeStart = { x: touch.clientX, y: touch.clientY }
 }, { passive: true })
 
@@ -1150,6 +1149,11 @@ function createGroupSection(group) {
     applyGroupNotifIndicator(notifIndicator, group.id)
     labelWrap.appendChild(label)
 
+    const groupBadge = document.createElement('span')
+    groupBadge.className = 'channel-group-badge'
+    groupBadge.hidden = true
+    labelWrap.appendChild(groupBadge)
+
     const settingsBtn = document.createElement('button')
     settingsBtn.type = 'button'
     settingsBtn.className = 'group-settings-btn'
@@ -1182,6 +1186,7 @@ function createGroupSection(group) {
 function createUngroupedSection() {
   const section = document.createElement('section')
   section.className = 'channel-group channel-group--ungrouped'
+  section.dataset.groupId = UNGROUPED_SECTION_ID
 
   const header = document.createElement('div')
   header.className = 'channel-group-header'
@@ -1197,6 +1202,13 @@ function createUngroupedSection() {
     labelWrap.appendChild(createGroupCollapseToggle(section, UNGROUPED_SECTION_ID, '未分類'))
   }
   labelWrap.appendChild(label)
+
+  if (!reorderMode) {
+    const groupBadge = document.createElement('span')
+    groupBadge.className = 'channel-group-badge'
+    groupBadge.hidden = true
+    labelWrap.appendChild(groupBadge)
+  }
   header.appendChild(labelWrap)
 
   if (!reorderMode) {
@@ -1377,6 +1389,7 @@ function markAllChannelsRead() {
   for (const name of allChannelNames()) {
     if (unread[name]) markChannelRead(name)
   }
+  closeSidebar()
   showToast('既読にしました')
 }
 
@@ -1408,6 +1421,24 @@ function updateBadge(channelName) {
   } else if (badge) {
     badge.remove()
   }
+  updateGroupBadge(channelsByName[channelName]?.group_id || UNGROUPED_SECTION_ID)
+}
+
+function groupUnreadTotal(groupId) {
+  const names = groupId === UNGROUPED_SECTION_ID
+    ? channelUngrouped.map(c => c.name)
+    : (groupsById[groupId]?.channels || []).map(c => c.name)
+  return names.reduce((sum, name) => sum + (unread[name] || 0), 0)
+}
+
+function updateGroupBadge(groupId) {
+  const section = channelList.querySelector(`.channel-group[data-group-id="${groupId}"]`)
+  if (!section) return
+  const badge = section.querySelector(':scope > .channel-group-header .channel-group-badge')
+  if (!badge) return
+  const count = groupUnreadTotal(groupId)
+  badge.textContent = count > 99 ? '99+' : String(count)
+  badge.hidden = count === 0
 }
 
 function updateAllBadges() {
