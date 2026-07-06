@@ -31,11 +31,8 @@ jobs:
       - name: Run backend tests
         run: python -m unittest discover -s backend -p 'test_*.py' -v
         env:
+          # database.py の import 時に必須（実際の DB 接続は行わない。テストは全て DB をモックしている）
           DB_NAME: ci_signaly
-          DB_USER: ci
-          DB_PASSWORD: ci
-          DB_HOST: 127.0.0.1
-          DB_PORT: "3306"
 
   notify:
     needs: [backend]

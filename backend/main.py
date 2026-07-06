@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 from itsdangerous import BadData
+from sqlalchemy import or_
 
 import auth
 from database import ApiKey, Channel, ChannelGroup, Notification, PushSubscription, get_session, init_db
@@ -344,6 +345,14 @@ def _utc_iso(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S.%f").rstrip("0").rstrip(".") + "Z"
 
 
+def _broadcast(channel_name: str, event: str, data: dict) -> None:
+    for q in list(_subscribers.get(channel_name, [])):
+        try:
+            q.put_nowait({"event": event, "data": data})
+        except asyncio.QueueFull:
+            _subscribers[channel_name].remove(q)
+
+
 async def _dispatch_notification(channel_name: str, parsed: dict) -> dict:
     entry = {
         "id": str(uuid.uuid4()),
@@ -357,15 +366,32 @@ async def _dispatch_notification(channel_name: str, parsed: dict) -> dict:
     }
 
     await asyncio.to_thread(_save_notification, entry)
-
-    for q in list(_subscribers.get(channel_name, [])):
-        try:
-            q.put_nowait(entry)
-        except asyncio.QueueFull:
-            _subscribers[channel_name].remove(q)
+    _broadcast(channel_name, "notification", entry)
 
     asyncio.create_task(asyncio.to_thread(send_push_notifications, entry))
     return entry
+
+
+def _delete_notification(notification_id: str) -> Optional[str]:
+    """通知を削除し、削除できた場合は所属チャンネル名を返す。"""
+    with get_session() as session:
+        row = session.query(Notification).filter(Notification.id == notification_id).first()
+        if not row:
+            return None
+        channel_name = row.channel
+        session.delete(row)
+        session.commit()
+    return channel_name
+
+
+def _clear_channel_notifications(channel_name: str) -> int:
+    """チャンネルの通知履歴を全削除し、削除件数を返す。"""
+    with get_session() as session:
+        deleted = session.query(Notification).filter(
+            Notification.channel == channel_name
+        ).delete(synchronize_session=False)
+        session.commit()
+    return deleted
 
 
 async def _notify_login(email: str, user_info: dict, request: Request) -> None:
@@ -390,6 +416,19 @@ def _save_notification(entry: dict) -> None:
         session.commit()
 
 
+def _notification_to_dict(r: Notification) -> dict:
+    return {
+        "id": r.id,
+        "channel": r.channel,
+        "title": r.title,
+        "message": r.message,
+        "level": r.level,
+        "timestamp": _utc_iso(r.timestamp),
+        "fields": json.loads(r.fields) if getattr(r, "fields", None) else None,
+        "color": getattr(r, "color", None),
+    }
+
+
 def _fetch_history(channel_name: str, limit: int) -> List[dict]:
     with get_session() as session:
         rows = (
@@ -399,19 +438,26 @@ def _fetch_history(channel_name: str, limit: int) -> List[dict]:
             .limit(limit)
             .all()
         )
-        return [
-            {
-                "id": r.id,
-                "channel": r.channel,
-                "title": r.title,
-                "message": r.message,
-                "level": r.level,
-                "timestamp": _utc_iso(r.timestamp),
-                "fields": json.loads(r.fields) if getattr(r, "fields", None) else None,
-                "color": getattr(r, "color", None),
-            }
-            for r in rows
-        ]
+        return [_notification_to_dict(r) for r in rows]
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _search_notifications(query: str, limit: int, channel_name: Optional[str] = None) -> List[dict]:
+    pattern = f"%{_escape_like(query)}%"
+    with get_session() as session:
+        q = session.query(Notification).filter(
+            or_(
+                Notification.title.like(pattern, escape="\\"),
+                Notification.message.like(pattern, escape="\\"),
+            )
+        )
+        if channel_name:
+            q = q.filter(Notification.channel == channel_name)
+        rows = q.order_by(Notification.timestamp.desc()).limit(limit).all()
+        return [_notification_to_dict(r) for r in rows]
 
 
 def _endpoint_hash(endpoint: str) -> str:
@@ -872,6 +918,26 @@ async def delete_group(group_id: str, email: str = Depends(auth.require_auth)):
     return {"ok": True, "name": name}
 
 
+@app.delete("/api/notifications/{notification_id}")
+async def delete_notification(notification_id: str, email: str = Depends(auth.require_auth)):
+    channel_name = await asyncio.to_thread(_delete_notification, notification_id)
+    if not channel_name:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    _broadcast(channel_name, "delete", {"id": notification_id})
+    return {"ok": True}
+
+
+@app.delete("/api/channels/{channel_id}/notifications")
+async def clear_channel_notifications(channel_id: str, email: str = Depends(auth.require_auth)):
+    channels = await asyncio.to_thread(_fetch_channels)
+    if channel_id not in channels:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    channel_name = channels[channel_id]
+    deleted = await asyncio.to_thread(_clear_channel_notifications, channel_name)
+    _broadcast(channel_name, "clear", {})
+    return {"ok": True, "deleted": deleted}
+
+
 @app.get("/api/history/{channel_name}")
 async def get_history(channel_name: str, limit: int = 200, email: str = Depends(auth.require_auth)):
     channels = await asyncio.to_thread(_fetch_channels)
@@ -880,6 +946,26 @@ async def get_history(channel_name: str, limit: int = 200, email: str = Depends(
 
     logs = await asyncio.to_thread(_fetch_history, channel_name, limit)
     return {"logs": logs}
+
+
+@app.get("/api/search")
+async def search_notifications(
+    q: str = "",
+    limit: int = 50,
+    channel: Optional[str] = None,
+    email: str = Depends(auth.require_auth),
+):
+    query = q.strip()
+    if not query:
+        return {"results": []}
+    limit = max(1, min(limit, 100))
+    channel_name = channel.strip() if channel else None
+    if channel_name:
+        channels = await asyncio.to_thread(_fetch_channels)
+        if channel_name not in channels.values():
+            raise HTTPException(status_code=404, detail="Channel not found")
+    results = await asyncio.to_thread(_search_notifications, query, limit, channel_name)
+    return {"results": results}
 
 
 @app.get("/api/stream/{channel_name}")
@@ -902,9 +988,14 @@ async def stream_events(channel_name: str, request: Request, email: str = Depend
                 if await request.is_disconnected():
                     break
                 try:
-                    entry = await asyncio.wait_for(queue.get(), timeout=25.0)
+                    item = await asyncio.wait_for(queue.get(), timeout=25.0)
                     yield _SSE_FLUSH
-                    yield f"data: {json.dumps(entry, ensure_ascii=False)}\n\n"
+                    event = item.get("event", "notification")
+                    payload = item.get("data", {})
+                    if event == "notification":
+                        yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                    else:
+                        yield f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
                 except asyncio.TimeoutError:
                     yield _SSE_FLUSH
                     yield "event: ping\ndata: {}\n\n"

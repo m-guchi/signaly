@@ -74,6 +74,7 @@ const SignalySettings = {
     const logoutBtn = document.getElementById('settings-logout-btn')
     const versionText = document.getElementById('settings-version-text')
     const changelogBtn = document.getElementById('settings-changelog-btn')
+    const reloadBtn = document.getElementById('settings-reload-btn')
     const changelogOverlay = document.getElementById('settings-changelog-overlay')
     const changelogClose = document.getElementById('settings-changelog-close')
 
@@ -95,6 +96,7 @@ const SignalySettings = {
     })
 
     changelogBtn?.addEventListener('click', () => this.openSettingsChangelog())
+    reloadBtn?.addEventListener('click', () => location.reload())
     changelogClose?.addEventListener('click', () => this.closeSettingsChangelog())
     changelogOverlay?.addEventListener('click', (e) => {
       if (e.target === changelogOverlay) this.closeSettingsChangelog()

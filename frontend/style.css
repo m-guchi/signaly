@@ -366,6 +366,36 @@ html, body {
   padding-bottom: 2px;
 }
 
+.channel-group--collapsed .channel-group-channels {
+  display: none;
+}
+
+.group-collapse-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-subtle);
+  cursor: pointer;
+  transform: rotate(90deg);
+  transition: transform 0.15s, color 0.1s, background 0.1s;
+}
+
+.group-collapse-btn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.channel-group--collapsed .group-collapse-btn {
+  transform: rotate(0deg);
+}
+
 .group-settings-btn {
   flex-shrink: 0;
   display: flex;
@@ -637,6 +667,25 @@ html, body {
   text-overflow: ellipsis;
 }
 
+.header-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+
+.header-icon-btn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
 .status {
   font-size: 10px;
   flex-shrink: 0;
@@ -722,6 +771,23 @@ html, body {
   background: color-mix(in srgb, var(--accent) 10%, var(--surface));
 }
 
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 10;
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+
 @media (max-width: 767px) {
   .channel-row {
     min-height: 44px;
@@ -738,6 +804,12 @@ html, body {
     opacity: 1;
     width: 36px;
     height: 36px;
+  }
+
+  .notif-delete-btn {
+    opacity: 1;
+    width: 28px;
+    height: 28px;
   }
 
   .add-channel-btn {
@@ -858,6 +930,33 @@ html, body {
   color: var(--text-muted);
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+.notif-delete-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-subtle);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s, background 0.1s;
+}
+
+.notif-card:hover .notif-delete-btn,
+.notif-delete-btn:focus-visible {
+  opacity: 1;
+}
+
+.notif-delete-btn:hover {
+  color: var(--error);
+  background: var(--surface-hover);
 }
 
 .notif-message {
@@ -1217,6 +1316,7 @@ html, body {
 .channel-settings-actions {
   display: flex;
   justify-content: center;
+  gap: 12px;
   margin-top: 8px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
@@ -1601,6 +1701,151 @@ html, body {
   margin: 0 0 6px;
 }
 
+/* ── Search dialog ──────────────────────────── */
+
+.search-panel {
+  max-width: 480px;
+  max-height: min(80vh, calc(100dvh - 40px));
+}
+
+.search-body {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.search-scope {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.search-scope-btn {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.search-scope-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.search-scope-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface-hover);
+}
+
+.search-scope-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.search-input {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.search-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.search-hint,
+.search-empty,
+.search-error {
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px 0;
+}
+
+.search-error {
+  color: var(--error);
+}
+
+.search-result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 10px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.search-result:hover {
+  background: var(--surface-hover);
+}
+
+.search-result-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.search-result-channel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-result-time {
+  font-size: 11px;
+  color: var(--text-subtle);
+  flex-shrink: 0;
+}
+
+.search-result-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-result-excerpt {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* ── Settings dialog ───────────────────────── */
 
 .settings-body {
@@ -1963,6 +2208,16 @@ html, body {
 
 .docs-content a {
   color: var(--accent);
+}
+
+.color-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-left: 4px;
+  vertical-align: middle;
+  border: 1px solid var(--border);
+  border-radius: 3px;
 }
 
 .docs-error {

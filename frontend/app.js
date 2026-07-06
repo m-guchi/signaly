@@ -52,6 +52,8 @@ const LAST_CHANNEL_KEY = 'signaly-last-channel'
 const UNREAD_KEY = 'signaly-unread'
 const PUSH_DISABLED_KEY = 'signaly-push-disabled'
 const CHANNEL_TREE_KEY = 'signaly-channel-tree'
+const COLLAPSED_GROUPS_KEY = 'signaly-collapsed-groups'
+const UNGROUPED_SECTION_ID = '__ungrouped__'
 const UNREAD_POLL_MS = 15000
 const NEW_CARD_FADE_MS = 60000
 
@@ -80,7 +82,9 @@ const feedStateSpinner = document.getElementById('feed-state-spinner')
 const feedStateRetry = document.getElementById('feed-state-retry')
 const emptyState = document.getElementById('empty-state')
 const newNotifBanner = document.getElementById('new-notif-banner')
+const toastEl = document.getElementById('toast')
 const channelTitle = document.getElementById('channel-title')
+const channelSettingsHeaderBtn = document.getElementById('channel-settings-header-btn')
 const statusEl = document.getElementById('status')
 const sidebar = document.getElementById('sidebar')
 const sidebarToggle = document.getElementById('sidebar-toggle')
@@ -127,6 +131,39 @@ document.addEventListener('keydown', (e) => {
 
 mobileSidebarMq.addEventListener('change', () => {
   if (!isMobileSidebar()) closeSidebar()
+})
+
+// ── 画面左端の右スワイプでサイドバーを開く ──────────────────────────────────
+
+const EDGE_SWIPE_ZONE = 24
+const EDGE_SWIPE_THRESHOLD = 40
+
+let edgeSwipeStart = null
+
+document.addEventListener('touchstart', (e) => {
+  if (!isMobileSidebar() || sidebar.classList.contains('sidebar--open')) return
+  const touch = e.touches[0]
+  if (touch.clientX > EDGE_SWIPE_ZONE) return
+  edgeSwipeStart = { x: touch.clientX, y: touch.clientY }
+}, { passive: true })
+
+document.addEventListener('touchmove', (e) => {
+  if (!edgeSwipeStart) return
+  const touch = e.touches[0]
+  const dx = touch.clientX - edgeSwipeStart.x
+  const dy = touch.clientY - edgeSwipeStart.y
+  if (Math.abs(dy) > Math.abs(dx)) {
+    edgeSwipeStart = null
+    return
+  }
+  if (dx > EDGE_SWIPE_THRESHOLD) {
+    setSidebarOpen(true)
+    edgeSwipeStart = null
+  }
+}, { passive: true })
+
+document.addEventListener('touchend', () => {
+  edgeSwipeStart = null
 })
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -398,10 +435,47 @@ function clearChannelTreeCache() {
   }
 }
 
+function loadCollapsedGroups() {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_GROUPS_KEY)
+    return raw ? new Set(JSON.parse(raw)) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
+function saveCollapsedGroups() {
+  try {
+    localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify([...collapsedGroups]))
+  } catch {
+    // quota exceeded 等は無視
+  }
+}
+
+function toggleGroupCollapsed(groupId) {
+  if (collapsedGroups.has(groupId)) {
+    collapsedGroups.delete(groupId)
+  } else {
+    collapsedGroups.add(groupId)
+  }
+  saveCollapsedGroups()
+}
+
 function showAuthenticatedShell() {
   SignalySettings.showAuthenticated()
   if (addGroupBtn) addGroupBtn.hidden = false
   if (reorderModeBtn) reorderModeBtn.hidden = false
+  if (markAllReadBtn) markAllReadBtn.hidden = false
+}
+
+let toastTimer = null
+
+function showToast(message) {
+  if (!toastEl) return
+  toastEl.textContent = message
+  toastEl.hidden = false
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toastEl.hidden = true }, 2000)
 }
 
 function markChannelRead(channelName, timestampMs = Date.now()) {
@@ -455,6 +529,100 @@ function renderFieldValue(raw) {
     .replace(/:rocket:/g, '🚀')
 }
 
+const NOTIF_DELETE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <polyline points="3 6 5 6 21 6"/>
+  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+  <path d="M10 11v6"/>
+  <path d="M14 11v6"/>
+  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+</svg>`
+
+const notificationDeleteDialog = document.getElementById('notification-delete-dialog')
+const notificationDeleteError = document.getElementById('notification-delete-error')
+const notificationDeleteCancel = document.getElementById('notification-delete-cancel')
+const notificationDeleteConfirm = document.getElementById('notification-delete-confirm')
+
+let pendingDeleteNotificationId = null
+
+function openNotificationDeleteDialog(id) {
+  pendingDeleteNotificationId = id
+  notificationDeleteError.hidden = true
+  notificationDeleteError.textContent = ''
+  notificationDeleteConfirm.disabled = false
+  notificationDeleteCancel.disabled = false
+  SignalyDialog.open(notificationDeleteDialog, { focusEl: notificationDeleteCancel })
+}
+
+function closeNotificationDeleteDialog() {
+  SignalyDialog.close(notificationDeleteDialog)
+  pendingDeleteNotificationId = null
+  notificationDeleteError.hidden = true
+  notificationDeleteError.textContent = ''
+}
+
+notificationDeleteCancel?.addEventListener('click', closeNotificationDeleteDialog)
+
+notificationDeleteDialog?.addEventListener('click', (e) => {
+  if (e.target === notificationDeleteDialog) closeNotificationDeleteDialog()
+})
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && notificationDeleteDialog?.classList.contains('open')) {
+    closeNotificationDeleteDialog()
+  }
+})
+
+notificationDeleteConfirm?.addEventListener('click', async () => {
+  const id = pendingDeleteNotificationId
+  if (!id) return
+
+  notificationDeleteError.hidden = true
+  notificationDeleteConfirm.disabled = true
+  notificationDeleteCancel.disabled = true
+
+  try {
+    const res = await fetch(apiUrl(`api/notifications/${id}`), { method: 'DELETE' })
+    if (!res.ok && res.status !== 404) {
+      notificationDeleteError.textContent = '削除に失敗しました'
+      notificationDeleteError.hidden = false
+      return
+    }
+    removeNotificationCard(id)
+    closeNotificationDeleteDialog()
+  } catch {
+    notificationDeleteError.textContent = 'ネットワークエラーが発生しました'
+    notificationDeleteError.hidden = false
+  } finally {
+    notificationDeleteConfirm.disabled = false
+    notificationDeleteCancel.disabled = false
+  }
+})
+
+function deleteNotification(id) {
+  openNotificationDeleteDialog(id)
+}
+
+function removeNotificationCard(id) {
+  seenIds.delete(id)
+  const card = feed.querySelector(`.notif-card[data-id="${CSS.escape(id)}"]`)
+  if (!card) return
+  const dateKey = card.dataset.date
+  card.remove()
+  if (dateKey && !feed.querySelector(`.notif-card[data-date="${CSS.escape(dateKey)}"]`)) {
+    feed.querySelector(`.feed-date-divider[data-date="${CSS.escape(dateKey)}"]`)?.remove()
+  }
+  if (emptyState && !feed.querySelector('.notif-card')) {
+    emptyState.hidden = false
+  }
+}
+
+function clearFeedForActiveChannel() {
+  seenIds.clear()
+  feed.innerHTML = ''
+  if (feedStickyDate) feedStickyDate.hidden = true
+  if (emptyState) emptyState.hidden = false
+}
+
 function createCard(entry, { isNew = false } = {}) {
   const card = document.createElement('div')
   card.className = 'notif-card' + (isNew ? ' notif-card--new' : '')
@@ -487,6 +655,19 @@ function createCard(entry, { isNew = false } = {}) {
   }
 
   header.appendChild(time)
+
+  const deleteBtn = document.createElement('button')
+  deleteBtn.type = 'button'
+  deleteBtn.className = 'notif-delete-btn'
+  deleteBtn.title = '通知を削除'
+  deleteBtn.setAttribute('aria-label', '通知を削除')
+  deleteBtn.innerHTML = NOTIF_DELETE_ICON
+  deleteBtn.addEventListener('click', (e) => {
+    e.stopPropagation()
+    void deleteNotification(entry.id)
+  })
+  header.appendChild(deleteBtn)
+
   card.appendChild(header)
 
   if (entry.message) {
@@ -594,6 +775,172 @@ async function handleNotificationNavigation({ channel, id, url } = {}) {
   await selectChannel(targetChannel)
 }
 
+// ── Search ───────────────────────────────────────────────────────────────────
+
+const SEARCH_DEBOUNCE_MS = 300
+
+const searchBtn = document.getElementById('search-btn')
+const searchDialog = document.getElementById('search-dialog')
+const searchClose = document.getElementById('search-close')
+const searchInput = document.getElementById('search-input')
+const searchResultsEl = document.getElementById('search-results')
+const searchScopeEl = document.getElementById('search-scope')
+const searchScopeBtns = searchScopeEl ? Array.from(searchScopeEl.querySelectorAll('.search-scope-btn')) : []
+
+let searchDebounceTimer = null
+let searchRequestId = 0
+let searchScope = 'all'
+
+function renderSearchMessage(text, className = 'search-hint') {
+  searchResultsEl.innerHTML = ''
+  const p = document.createElement('p')
+  p.className = className
+  p.textContent = text
+  searchResultsEl.appendChild(p)
+}
+
+function searchExcerpt(entry) {
+  return String(entry.message || '').replace(/\s+/g, ' ').trim().slice(0, 140)
+}
+
+function createSearchResultRow(entry) {
+  const btn = document.createElement('button')
+  btn.type = 'button'
+  btn.className = 'search-result'
+
+  const header = document.createElement('div')
+  header.className = 'search-result-header'
+
+  const channelEl = document.createElement('span')
+  channelEl.className = 'search-result-channel'
+  channelEl.textContent = `#${entry.channel}`
+
+  const timeEl = document.createElement('span')
+  timeEl.className = 'search-result-time'
+  timeEl.textContent = `${formatDateFromKey(getDateKey(entry.timestamp))} ${formatNotificationTime(entry.timestamp)}`
+
+  header.appendChild(channelEl)
+  header.appendChild(timeEl)
+  btn.appendChild(header)
+
+  if (entry.title) {
+    const titleEl = document.createElement('div')
+    titleEl.className = 'search-result-title'
+    titleEl.textContent = entry.title
+    btn.appendChild(titleEl)
+  }
+
+  const excerpt = searchExcerpt(entry)
+  if (excerpt) {
+    const excerptEl = document.createElement('div')
+    excerptEl.className = 'search-result-excerpt'
+    excerptEl.textContent = excerpt
+    btn.appendChild(excerptEl)
+  }
+
+  btn.addEventListener('click', () => {
+    closeSearchDialog()
+    void handleNotificationNavigation({ channel: entry.channel, id: entry.id })
+  })
+
+  return btn
+}
+
+function renderSearchResults(results) {
+  searchResultsEl.innerHTML = ''
+  if (!results.length) {
+    renderSearchMessage('一致するメッセージが見つかりませんでした', 'search-empty')
+    return
+  }
+  for (const entry of results) {
+    searchResultsEl.appendChild(createSearchResultRow(entry))
+  }
+}
+
+function updateSearchScopeUI() {
+  for (const btn of searchScopeBtns) {
+    const scope = btn.dataset.scope
+    btn.classList.toggle('active', scope === searchScope)
+    btn.disabled = scope === 'channel' && !activeChannel
+  }
+}
+
+async function runSearch(query) {
+  const requestId = ++searchRequestId
+  try {
+    const params = new URLSearchParams({ q: query })
+    if (searchScope === 'channel' && activeChannel) params.set('channel', activeChannel)
+    const res = await fetch(apiUrl(`api/search?${params.toString()}`))
+    if (requestId !== searchRequestId) return
+    if (!res.ok) {
+      renderSearchMessage('検索に失敗しました', 'search-error')
+      return
+    }
+    const data = await res.json()
+    if (requestId !== searchRequestId) return
+    renderSearchResults(data.results || [])
+  } catch {
+    if (requestId !== searchRequestId) return
+    renderSearchMessage('ネットワークエラーが発生しました', 'search-error')
+  }
+}
+
+function openSearchDialog() {
+  if (!searchDialog) return
+  closeSidebar()
+  if (searchScope === 'channel' && !activeChannel) searchScope = 'all'
+  updateSearchScopeUI()
+  SignalyDialog.open(searchDialog, { focusEl: searchInput })
+  if (!searchInput.value.trim()) renderSearchMessage('キーワードを入力してください')
+}
+
+function closeSearchDialog() {
+  SignalyDialog.close(searchDialog)
+}
+
+channelSettingsHeaderBtn?.addEventListener('click', () => {
+  if (activeChannel) openChannelSettings(activeChannel)
+})
+
+searchBtn?.addEventListener('click', openSearchDialog)
+searchClose?.addEventListener('click', closeSearchDialog)
+searchDialog?.addEventListener('click', (e) => {
+  if (e.target === searchDialog) closeSearchDialog()
+})
+
+searchInput?.addEventListener('input', () => {
+  const query = searchInput.value.trim()
+  searchRequestId++
+  clearTimeout(searchDebounceTimer)
+  if (!query) {
+    renderSearchMessage('キーワードを入力してください')
+    return
+  }
+  renderSearchMessage('検索中…')
+  searchDebounceTimer = setTimeout(() => runSearch(query), SEARCH_DEBOUNCE_MS)
+})
+
+for (const btn of searchScopeBtns) {
+  btn.addEventListener('click', () => {
+    const scope = btn.dataset.scope
+    if (scope === searchScope || btn.disabled) return
+    searchScope = scope
+    updateSearchScopeUI()
+    const query = searchInput.value.trim()
+    if (!query) return
+    searchRequestId++
+    clearTimeout(searchDebounceTimer)
+    renderSearchMessage('検索中…')
+    void runSearch(query)
+  })
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && searchDialog?.classList.contains('open')) {
+    closeSearchDialog()
+  }
+})
+
 function updateNewNotifBanner() {
   if (!newNotifBanner || pendingNewCount <= 0) return
   const scrolled = feed.scrollTop > 40
@@ -648,11 +995,16 @@ const REORDER_DONE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill=
   <polyline points="20 6 9 17 4 12"/>
 </svg>`
 
+const GROUP_COLLAPSE_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <polyline points="9 6 15 12 9 18"/>
+</svg>`
+
 let channelGroups = []
 let channelUngrouped = []
 let groupsById = {}
 let reorderMode = false
 let lastChannelTree = null
+let collapsedGroups = loadCollapsedGroups()
 
 function createReorderHandle() {
   const handle = document.createElement('span')
@@ -745,6 +1097,28 @@ function createGroupActions(...buttons) {
   return actions
 }
 
+function setGroupCollapsedUI(section, btn, groupName, collapsed) {
+  section.classList.toggle('channel-group--collapsed', collapsed)
+  btn.setAttribute('aria-expanded', String(!collapsed))
+  const title = `${groupName} を${collapsed ? '展開する' : '折りたたむ'}`
+  btn.title = title
+  btn.setAttribute('aria-label', title)
+}
+
+function createGroupCollapseToggle(section, sectionId, groupName) {
+  const btn = document.createElement('button')
+  btn.type = 'button'
+  btn.className = 'group-collapse-btn'
+  btn.innerHTML = GROUP_COLLAPSE_ICON
+  setGroupCollapsedUI(section, btn, groupName, collapsedGroups.has(sectionId))
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation()
+    toggleGroupCollapsed(sectionId)
+    setGroupCollapsedUI(section, btn, groupName, collapsedGroups.has(sectionId))
+  })
+  return btn
+}
+
 function createGroupSection(group) {
   const section = document.createElement('section')
   section.className = 'channel-group'
@@ -767,6 +1141,8 @@ function createGroupSection(group) {
     labelWrap.appendChild(label)
     header.appendChild(labelWrap)
   } else {
+    labelWrap.appendChild(createGroupCollapseToggle(section, group.id, group.name))
+
     const notifIndicator = document.createElement('span')
     notifIndicator.className = 'notif-indicator'
     notifIndicator.setAttribute('aria-hidden', 'true')
@@ -814,7 +1190,15 @@ function createUngroupedSection() {
   label.className = 'channel-group-label'
   label.textContent = '未分類'
 
-  header.appendChild(label)
+  const labelWrap = document.createElement('div')
+  labelWrap.className = 'channel-group-label-wrap'
+
+  if (!reorderMode) {
+    labelWrap.appendChild(createGroupCollapseToggle(section, UNGROUPED_SECTION_ID, '未分類'))
+  }
+  labelWrap.appendChild(label)
+  header.appendChild(labelWrap)
+
   if (!reorderMode) {
     header.appendChild(createGroupActions(
       createAddBtn('チャンネルを追加', () => openCreateChannelDialog(null)),
@@ -869,6 +1253,7 @@ function renderChannelTree(data, selectName = null, options = {}) {
     channelList.innerHTML = '<div class="loading-text">グループを作成してチャンネルを追加</div>'
     activeChannel = null
     channelTitle.textContent = 'チャンネルを選択'
+    if (channelSettingsHeaderBtn) channelSettingsHeaderBtn.hidden = true
     hideFeedState()
     return
   }
@@ -976,6 +1361,7 @@ async function exitReorderMode() {
 SignalyReorder.init(channelList)
 
 const reorderModeBtn = document.getElementById('reorder-mode-btn')
+const markAllReadBtn = document.getElementById('mark-all-read-btn')
 
 reorderModeBtn?.addEventListener('click', (e) => {
   e.preventDefault()
@@ -986,6 +1372,15 @@ reorderModeBtn?.addEventListener('click', (e) => {
     enterReorderMode()
   }
 })
+
+function markAllChannelsRead() {
+  for (const name of allChannelNames()) {
+    if (unread[name]) markChannelRead(name)
+  }
+  showToast('既読にしました')
+}
+
+markAllReadBtn?.addEventListener('click', markAllChannelsRead)
 
 function setActiveChannelRow(channelName) {
   channelList.querySelectorAll('.channel-row').forEach(row => {
@@ -1023,7 +1418,10 @@ function updateAllBadges() {
 // ── Channel selection ─────────────────────────────────────────────────────────
 
 async function selectChannel(name) {
-  if (activeChannel === name) return
+  if (activeChannel === name) {
+    closeSidebar()
+    return
+  }
 
   // SSE 接続前に保存（接続後の markChannelRead で上書きされないようにする）
   const sinceLastRead = lastReadAt[name]
@@ -1039,6 +1437,7 @@ async function selectChannel(name) {
   setActiveChannelRow(name)
   updateAllBadges()
   channelTitle.textContent = `# ${name}`
+  if (channelSettingsHeaderBtn) channelSettingsHeaderBtn.hidden = false
   feed.innerHTML = ''
   if (feedStickyDate) feedStickyDate.hidden = true
   if (emptyState) emptyState.hidden = true
@@ -1257,6 +1656,20 @@ function connectSSE(channelName) {
     // デスクトップ通知
     void showDesktopNotification(entry)
   }
+
+  es.addEventListener('delete', (event) => {
+    let data
+    try {
+      data = JSON.parse(event.data)
+    } catch {
+      return
+    }
+    if (activeChannel === channelName) removeNotificationCard(data.id)
+  })
+
+  es.addEventListener('clear', () => {
+    if (activeChannel === channelName) clearFeedForActiveChannel()
+  })
 
   es.onerror = () => {
     if (activeChannel === channelName) setStatus('disconnected')
@@ -1950,11 +2363,11 @@ const createChannelDone = document.getElementById('create-channel-done')
 const createChannelRevealWebhook = document.getElementById('create-channel-reveal-webhook')
 const createChannelWebhookSection = document.getElementById('create-channel-webhook-section')
 
-function hideWebhookSection(revealBtn, section, copyBtn = null) {
+function hideWebhookSection(revealBtn, section, copyBtn = null, revealLabel = 'URL を表示') {
   if (section) section.hidden = true
   if (revealBtn) {
     revealBtn.hidden = false
-    revealBtn.textContent = 'URL を表示'
+    revealBtn.textContent = revealLabel
   }
   if (copyBtn) copyBtn.textContent = 'コピー'
 }
@@ -1967,7 +2380,7 @@ function resetCreateChannelDialog() {
   createChannelError.hidden = true
   createChannelError.textContent = ''
   createChannelGroupId = null
-  hideWebhookSection(createChannelRevealWebhook, createChannelWebhookSection, createChannelCopy)
+  hideWebhookSection(createChannelRevealWebhook, createChannelWebhookSection, createChannelCopy, 'URL をコピー')
 }
 
 function openCreateChannelDialog(groupId = null) {
@@ -2028,7 +2441,7 @@ createChannelForm?.addEventListener('submit', async (e) => {
     createChannelTitle.textContent = 'チャンネルを作成しました'
     createChannelSuccessName.textContent = data.name
     createChannelWebhook.value = data.webhook_url
-    hideWebhookSection(createChannelRevealWebhook, createChannelWebhookSection, createChannelCopy)
+    hideWebhookSection(createChannelRevealWebhook, createChannelWebhookSection, createChannelCopy, 'URL をコピー')
 
     const listRes = await fetch(apiUrl('api/channels'))
     if (listRes.ok) {
@@ -2055,9 +2468,17 @@ createChannelCopy?.addEventListener('click', async () => {
   }
 })
 
-createChannelRevealWebhook?.addEventListener('click', () => {
+createChannelRevealWebhook?.addEventListener('click', async () => {
   createChannelWebhookSection.hidden = false
   createChannelRevealWebhook.hidden = true
+  try {
+    await navigator.clipboard.writeText(createChannelWebhook.value)
+    createChannelCopy.textContent = 'コピー済み'
+    setTimeout(() => { createChannelCopy.textContent = 'コピー' }, 2000)
+  } catch {
+    createChannelWebhook.select()
+    document.execCommand('copy')
+  }
 })
 
 function parseApiError(data, fallback) {
@@ -2275,12 +2696,18 @@ const channelSettingsCopy = document.getElementById('channel-settings-copy')
 const channelSettingsRevealWebhook = document.getElementById('channel-settings-reveal-webhook')
 const channelSettingsWebhookSection = document.getElementById('channel-settings-webhook-section')
 const channelSettingsDelete = document.getElementById('channel-settings-delete')
+const channelSettingsClear = document.getElementById('channel-settings-clear')
 const channelSettingsNotifSegment = document.getElementById('channel-settings-notif-segment')
 const channelDeleteDialog = document.getElementById('channel-delete-dialog')
 const channelDeleteName = document.getElementById('channel-delete-name')
 const channelDeleteError = document.getElementById('channel-delete-error')
 const channelDeleteCancel = document.getElementById('channel-delete-cancel')
 const channelDeleteConfirm = document.getElementById('channel-delete-confirm')
+const notificationsClearDialog = document.getElementById('notifications-clear-dialog')
+const notificationsClearName = document.getElementById('notifications-clear-name')
+const notificationsClearError = document.getElementById('notifications-clear-error')
+const notificationsClearCancel = document.getElementById('notifications-clear-cancel')
+const notificationsClearConfirm = document.getElementById('notifications-clear-confirm')
 
 let channelSettingsId = null
 let channelSettingsOriginalName = null
@@ -2290,9 +2717,10 @@ function resetChannelSettingsDialog() {
   channelSettingsOriginalName = null
   channelSettingsError.hidden = true
   channelSettingsError.textContent = ''
-  hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy)
+  hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy, 'URL をコピー')
   channelSettingsRenameBtn.disabled = false
   channelSettingsDelete.disabled = false
+  channelSettingsClear.disabled = false
   setNotifSegmentDisabled(channelSettingsNotifSegment, false)
 }
 
@@ -2306,10 +2734,9 @@ function openChannelSettings(channelName) {
   updateChannelNotifSettingsUI(channel)
   channelSettingsWebhook.value = channel.webhook_url || ''
   channelSettingsError.hidden = true
-  hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy)
+  hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy, 'URL をコピー')
   closeSidebar()
-  SignalyDialog.open(channelSettingsDialog, { focusEl: channelSettingsRename })
-  channelSettingsRename?.select()
+  SignalyDialog.open(channelSettingsDialog)
 }
 
 function closeChannelSettingsDialog() {
@@ -2320,7 +2747,11 @@ function closeChannelSettingsDialog() {
 channelSettingsClose?.addEventListener('click', closeChannelSettingsDialog)
 
 channelSettingsDialog?.addEventListener('click', (e) => {
-  if (e.target === channelSettingsDialog && !channelDeleteDialog?.classList.contains('open')) {
+  if (
+    e.target === channelSettingsDialog
+    && !channelDeleteDialog?.classList.contains('open')
+    && !notificationsClearDialog?.classList.contains('open')
+  ) {
     closeChannelSettingsDialog()
   }
 })
@@ -2385,14 +2816,26 @@ document.addEventListener('keydown', (e) => {
     closeChannelDeleteDialog()
     return
   }
+  if (e.key === 'Escape' && notificationsClearDialog?.classList.contains('open')) {
+    closeNotificationsClearDialog()
+    return
+  }
   if (e.key === 'Escape' && channelSettingsDialog?.classList.contains('open')) {
     closeChannelSettingsDialog()
   }
 })
 
-channelSettingsRevealWebhook?.addEventListener('click', () => {
+channelSettingsRevealWebhook?.addEventListener('click', async () => {
   channelSettingsWebhookSection.hidden = false
   channelSettingsRevealWebhook.hidden = true
+  try {
+    await navigator.clipboard.writeText(channelSettingsWebhook.value)
+    channelSettingsCopy.textContent = 'コピー済み'
+    setTimeout(() => { channelSettingsCopy.textContent = 'コピー' }, 2000)
+  } catch {
+    channelSettingsWebhook.select()
+    document.execCommand('copy')
+  }
 })
 
 channelSettingsCopy?.addEventListener('click', async () => {
@@ -2507,6 +2950,71 @@ channelDeleteConfirm?.addEventListener('click', async () => {
     channelDeleteCancel.disabled = false
     channelSettingsDelete.disabled = false
     channelSettingsRenameBtn.disabled = false
+  }
+})
+
+function openNotificationsClearDialog() {
+  if (!channelSettingsOriginalName) return
+  notificationsClearName.textContent = channelSettingsOriginalName
+  notificationsClearError.hidden = true
+  notificationsClearError.textContent = ''
+  notificationsClearConfirm.disabled = false
+  notificationsClearCancel.disabled = false
+  SignalyDialog.open(notificationsClearDialog, { focusEl: notificationsClearCancel })
+}
+
+function closeNotificationsClearDialog() {
+  SignalyDialog.close(notificationsClearDialog)
+  notificationsClearError.hidden = true
+  notificationsClearError.textContent = ''
+  notificationsClearConfirm.disabled = false
+  notificationsClearCancel.disabled = false
+}
+
+channelSettingsClear?.addEventListener('click', () => {
+  if (!channelSettingsId || !channelSettingsOriginalName) return
+  openNotificationsClearDialog()
+})
+
+notificationsClearCancel?.addEventListener('click', closeNotificationsClearDialog)
+
+notificationsClearDialog?.addEventListener('click', (e) => {
+  if (e.target === notificationsClearDialog) closeNotificationsClearDialog()
+})
+
+notificationsClearConfirm?.addEventListener('click', async () => {
+  if (!channelSettingsId || !channelSettingsOriginalName) return
+
+  notificationsClearError.hidden = true
+  notificationsClearConfirm.disabled = true
+  notificationsClearCancel.disabled = true
+  channelSettingsClear.disabled = true
+
+  try {
+    const res = await fetch(apiUrl(`api/channels/${channelSettingsId}/notifications`), {
+      method: 'DELETE',
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      notificationsClearError.textContent = parseApiError(data, '削除に失敗しました')
+      notificationsClearError.hidden = false
+      return
+    }
+
+    const clearedName = channelSettingsOriginalName
+    closeNotificationsClearDialog()
+
+    if (activeChannel === clearedName) {
+      clearFeedForActiveChannel()
+      markChannelRead(clearedName)
+    }
+  } catch {
+    notificationsClearError.textContent = 'ネットワークエラーが発生しました'
+    notificationsClearError.hidden = false
+  } finally {
+    notificationsClearConfirm.disabled = false
+    notificationsClearCancel.disabled = false
+    channelSettingsClear.disabled = false
   }
 })
 

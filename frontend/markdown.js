@@ -11,6 +11,10 @@ const SignalyMarkdown = {
 
   inline(text) {
     let out = this.escapeHtml(text)
+    out = out.replace(
+      /`(#[0-9a-fA-F]{6})`/g,
+      '<code>$1</code><span class="color-swatch" style="background:$1"></span>'
+    )
     out = out.replace(/`([^`]+)`/g, '<code>$1</code>')
     out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     out = out.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
@@ -36,7 +40,7 @@ const SignalyMarkdown = {
   renderTable(rows) {
     if (rows.length < 2) return ''
     const header = rows[0]
-    const body = rows.slice(2)
+    const body = rows.slice(1)
     let html = '<table><thead><tr>'
     for (const cell of header) {
       html += `<th>${this.inline(cell)}</th>`
