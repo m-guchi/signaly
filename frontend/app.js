@@ -2333,11 +2333,11 @@ const createChannelDone = document.getElementById('create-channel-done')
 const createChannelRevealWebhook = document.getElementById('create-channel-reveal-webhook')
 const createChannelWebhookSection = document.getElementById('create-channel-webhook-section')
 
-function hideWebhookSection(revealBtn, section, copyBtn = null) {
+function hideWebhookSection(revealBtn, section, copyBtn = null, revealLabel = 'URL を表示') {
   if (section) section.hidden = true
   if (revealBtn) {
     revealBtn.hidden = false
-    revealBtn.textContent = 'URL を表示'
+    revealBtn.textContent = revealLabel
   }
   if (copyBtn) copyBtn.textContent = 'コピー'
 }
@@ -2350,7 +2350,7 @@ function resetCreateChannelDialog() {
   createChannelError.hidden = true
   createChannelError.textContent = ''
   createChannelGroupId = null
-  hideWebhookSection(createChannelRevealWebhook, createChannelWebhookSection, createChannelCopy)
+  hideWebhookSection(createChannelRevealWebhook, createChannelWebhookSection, createChannelCopy, 'URL をコピー')
 }
 
 function openCreateChannelDialog(groupId = null) {
@@ -2411,7 +2411,7 @@ createChannelForm?.addEventListener('submit', async (e) => {
     createChannelTitle.textContent = 'チャンネルを作成しました'
     createChannelSuccessName.textContent = data.name
     createChannelWebhook.value = data.webhook_url
-    hideWebhookSection(createChannelRevealWebhook, createChannelWebhookSection, createChannelCopy)
+    hideWebhookSection(createChannelRevealWebhook, createChannelWebhookSection, createChannelCopy, 'URL をコピー')
 
     const listRes = await fetch(apiUrl('api/channels'))
     if (listRes.ok) {
@@ -2438,9 +2438,17 @@ createChannelCopy?.addEventListener('click', async () => {
   }
 })
 
-createChannelRevealWebhook?.addEventListener('click', () => {
+createChannelRevealWebhook?.addEventListener('click', async () => {
   createChannelWebhookSection.hidden = false
   createChannelRevealWebhook.hidden = true
+  try {
+    await navigator.clipboard.writeText(createChannelWebhook.value)
+    createChannelCopy.textContent = 'コピー済み'
+    setTimeout(() => { createChannelCopy.textContent = 'コピー' }, 2000)
+  } catch {
+    createChannelWebhook.select()
+    document.execCommand('copy')
+  }
 })
 
 function parseApiError(data, fallback) {
@@ -2679,7 +2687,7 @@ function resetChannelSettingsDialog() {
   channelSettingsOriginalName = null
   channelSettingsError.hidden = true
   channelSettingsError.textContent = ''
-  hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy)
+  hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy, 'URL をコピー')
   channelSettingsRenameBtn.disabled = false
   channelSettingsDelete.disabled = false
   channelSettingsClear.disabled = false
@@ -2696,7 +2704,7 @@ function openChannelSettings(channelName) {
   updateChannelNotifSettingsUI(channel)
   channelSettingsWebhook.value = channel.webhook_url || ''
   channelSettingsError.hidden = true
-  hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy)
+  hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy, 'URL をコピー')
   closeSidebar()
   SignalyDialog.open(channelSettingsDialog)
 }
@@ -2787,9 +2795,17 @@ document.addEventListener('keydown', (e) => {
   }
 })
 
-channelSettingsRevealWebhook?.addEventListener('click', () => {
+channelSettingsRevealWebhook?.addEventListener('click', async () => {
   channelSettingsWebhookSection.hidden = false
   channelSettingsRevealWebhook.hidden = true
+  try {
+    await navigator.clipboard.writeText(channelSettingsWebhook.value)
+    channelSettingsCopy.textContent = 'コピー済み'
+    setTimeout(() => { channelSettingsCopy.textContent = 'コピー' }, 2000)
+  } catch {
+    channelSettingsWebhook.select()
+    document.execCommand('copy')
+  }
 })
 
 channelSettingsCopy?.addEventListener('click', async () => {
