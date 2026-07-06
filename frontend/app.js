@@ -784,9 +784,12 @@ const searchDialog = document.getElementById('search-dialog')
 const searchClose = document.getElementById('search-close')
 const searchInput = document.getElementById('search-input')
 const searchResultsEl = document.getElementById('search-results')
+const searchScopeEl = document.getElementById('search-scope')
+const searchScopeBtns = searchScopeEl ? Array.from(searchScopeEl.querySelectorAll('.search-scope-btn')) : []
 
 let searchDebounceTimer = null
 let searchRequestId = 0
+let searchScope = 'all'
 
 function renderSearchMessage(text, className = 'search-hint') {
   searchResultsEl.innerHTML = ''
@@ -854,10 +857,20 @@ function renderSearchResults(results) {
   }
 }
 
+function updateSearchScopeUI() {
+  for (const btn of searchScopeBtns) {
+    const scope = btn.dataset.scope
+    btn.classList.toggle('active', scope === searchScope)
+    btn.disabled = scope === 'channel' && !activeChannel
+  }
+}
+
 async function runSearch(query) {
   const requestId = ++searchRequestId
   try {
-    const res = await fetch(apiUrl(`api/search?q=${encodeURIComponent(query)}`))
+    const params = new URLSearchParams({ q: query })
+    if (searchScope === 'channel' && activeChannel) params.set('channel', activeChannel)
+    const res = await fetch(apiUrl(`api/search?${params.toString()}`))
     if (requestId !== searchRequestId) return
     if (!res.ok) {
       renderSearchMessage('検索に失敗しました', 'search-error')
@@ -875,6 +888,8 @@ async function runSearch(query) {
 function openSearchDialog() {
   if (!searchDialog) return
   closeSidebar()
+  if (searchScope === 'channel' && !activeChannel) searchScope = 'all'
+  updateSearchScopeUI()
   SignalyDialog.open(searchDialog, { focusEl: searchInput })
   if (!searchInput.value.trim()) renderSearchMessage('キーワードを入力してください')
 }
@@ -904,6 +919,21 @@ searchInput?.addEventListener('input', () => {
   renderSearchMessage('検索中…')
   searchDebounceTimer = setTimeout(() => runSearch(query), SEARCH_DEBOUNCE_MS)
 })
+
+for (const btn of searchScopeBtns) {
+  btn.addEventListener('click', () => {
+    const scope = btn.dataset.scope
+    if (scope === searchScope || btn.disabled) return
+    searchScope = scope
+    updateSearchScopeUI()
+    const query = searchInput.value.trim()
+    if (!query) return
+    searchRequestId++
+    clearTimeout(searchDebounceTimer)
+    renderSearchMessage('検索中…')
+    void runSearch(query)
+  })
+}
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && searchDialog?.classList.contains('open')) {

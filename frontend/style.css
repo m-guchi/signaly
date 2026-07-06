@@ -1718,6 +1718,38 @@ html, body {
   overflow: hidden;
 }
 
+.search-scope {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.search-scope-btn {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.search-scope-btn:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.search-scope-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface-hover);
+}
+
+.search-scope-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .search-input {
   width: 100%;
   padding: 9px 12px;

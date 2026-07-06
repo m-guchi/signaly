@@ -424,6 +424,10 @@
         <button id="search-close" class="changelog-close" aria-label="閉じる">✕</button>
       </div>
       <div class="search-body">
+        <div id="search-scope" class="search-scope" role="group" aria-label="検索範囲">
+          <button type="button" class="search-scope-btn" data-scope="channel">このチャンネル</button>
+          <button type="button" class="search-scope-btn" data-scope="all">すべてのチャンネル</button>
+        </div>
         <input id="search-input" class="search-input" type="text" placeholder="メッセージを検索" autocomplete="off" maxlength="200">
         <div id="search-results" class="search-results">
           <p class="search-hint">キーワードを入力してください</p>

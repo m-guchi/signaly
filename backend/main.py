@@ -445,21 +445,18 @@ def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def _search_notifications(query: str, limit: int) -> List[dict]:
+def _search_notifications(query: str, limit: int, channel_name: Optional[str] = None) -> List[dict]:
     pattern = f"%{_escape_like(query)}%"
     with get_session() as session:
-        rows = (
-            session.query(Notification)
-            .filter(
-                or_(
-                    Notification.title.like(pattern, escape="\\"),
-                    Notification.message.like(pattern, escape="\\"),
-                )
+        q = session.query(Notification).filter(
+            or_(
+                Notification.title.like(pattern, escape="\\"),
+                Notification.message.like(pattern, escape="\\"),
             )
-            .order_by(Notification.timestamp.desc())
-            .limit(limit)
-            .all()
         )
+        if channel_name:
+            q = q.filter(Notification.channel == channel_name)
+        rows = q.order_by(Notification.timestamp.desc()).limit(limit).all()
         return [_notification_to_dict(r) for r in rows]
 
 
@@ -952,12 +949,22 @@ async def get_history(channel_name: str, limit: int = 200, email: str = Depends(
 
 
 @app.get("/api/search")
-async def search_notifications(q: str = "", limit: int = 50, email: str = Depends(auth.require_auth)):
+async def search_notifications(
+    q: str = "",
+    limit: int = 50,
+    channel: Optional[str] = None,
+    email: str = Depends(auth.require_auth),
+):
     query = q.strip()
     if not query:
         return {"results": []}
     limit = max(1, min(limit, 100))
-    results = await asyncio.to_thread(_search_notifications, query, limit)
+    channel_name = channel.strip() if channel else None
+    if channel_name:
+        channels = await asyncio.to_thread(_fetch_channels)
+        if channel_name not in channels.values():
+            raise HTTPException(status_code=404, detail="Channel not found")
+    results = await asyncio.to_thread(_search_notifications, query, limit, channel_name)
     return {"results": results}
 
 
