@@ -39,6 +39,12 @@
       <div class="channel-section-header">
         <span class="channel-section-label" id="channel-section-label">グループ</span>
         <div class="channel-section-actions">
+          <button id="mark-all-read-btn" class="add-channel-btn" type="button" title="すべて既読にする" aria-label="すべて既読にする" hidden>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="2 12 7 17 14 8"/>
+              <polyline points="11 17 22 5"/>
+            </svg>
+          </button>
           <button id="reorder-mode-btn" class="add-channel-btn" type="button" title="並び替え" aria-label="並び替え" hidden>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
               <line x1="8" y1="6" x2="8" y2="18"/>
@@ -95,6 +101,7 @@
         </div>
       </div>
       <button id="new-notif-banner" type="button" class="new-notif-banner" hidden>新着</button>
+      <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
       <div id="empty-state" class="empty-state" hidden>通知はまだありません</div>
     </main>
   </div>

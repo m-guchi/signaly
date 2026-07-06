@@ -82,6 +82,7 @@ const feedStateSpinner = document.getElementById('feed-state-spinner')
 const feedStateRetry = document.getElementById('feed-state-retry')
 const emptyState = document.getElementById('empty-state')
 const newNotifBanner = document.getElementById('new-notif-banner')
+const toastEl = document.getElementById('toast')
 const channelTitle = document.getElementById('channel-title')
 const channelSettingsHeaderBtn = document.getElementById('channel-settings-header-btn')
 const statusEl = document.getElementById('status')
@@ -464,6 +465,17 @@ function showAuthenticatedShell() {
   SignalySettings.showAuthenticated()
   if (addGroupBtn) addGroupBtn.hidden = false
   if (reorderModeBtn) reorderModeBtn.hidden = false
+  if (markAllReadBtn) markAllReadBtn.hidden = false
+}
+
+let toastTimer = null
+
+function showToast(message) {
+  if (!toastEl) return
+  toastEl.textContent = message
+  toastEl.hidden = false
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toastEl.hidden = true }, 2000)
 }
 
 function markChannelRead(channelName, timestampMs = Date.now()) {
@@ -1319,6 +1331,7 @@ async function exitReorderMode() {
 SignalyReorder.init(channelList)
 
 const reorderModeBtn = document.getElementById('reorder-mode-btn')
+const markAllReadBtn = document.getElementById('mark-all-read-btn')
 
 reorderModeBtn?.addEventListener('click', (e) => {
   e.preventDefault()
@@ -1329,6 +1342,15 @@ reorderModeBtn?.addEventListener('click', (e) => {
     enterReorderMode()
   }
 })
+
+function markAllChannelsRead() {
+  for (const name of allChannelNames()) {
+    if (unread[name]) markChannelRead(name)
+  }
+  showToast('既読にしました')
+}
+
+markAllReadBtn?.addEventListener('click', markAllChannelsRead)
 
 function setActiveChannelRow(channelName) {
   channelList.querySelectorAll('.channel-row').forEach(row => {
