@@ -2676,8 +2676,7 @@ function openChannelSettings(channelName) {
   channelSettingsError.hidden = true
   hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy)
   closeSidebar()
-  SignalyDialog.open(channelSettingsDialog, { focusEl: channelSettingsRename })
-  channelSettingsRename?.select()
+  SignalyDialog.open(channelSettingsDialog)
 }
 
 function closeChannelSettingsDialog() {
