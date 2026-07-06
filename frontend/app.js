@@ -712,6 +712,138 @@ async function handleNotificationNavigation({ channel, id, url } = {}) {
   await selectChannel(targetChannel)
 }
 
+// ── Search ───────────────────────────────────────────────────────────────────
+
+const SEARCH_DEBOUNCE_MS = 300
+
+const searchBtn = document.getElementById('search-btn')
+const searchDialog = document.getElementById('search-dialog')
+const searchClose = document.getElementById('search-close')
+const searchInput = document.getElementById('search-input')
+const searchResultsEl = document.getElementById('search-results')
+
+let searchDebounceTimer = null
+let searchRequestId = 0
+
+function renderSearchMessage(text, className = 'search-hint') {
+  searchResultsEl.innerHTML = ''
+  const p = document.createElement('p')
+  p.className = className
+  p.textContent = text
+  searchResultsEl.appendChild(p)
+}
+
+function searchExcerpt(entry) {
+  return String(entry.message || '').replace(/\s+/g, ' ').trim().slice(0, 140)
+}
+
+function createSearchResultRow(entry) {
+  const btn = document.createElement('button')
+  btn.type = 'button'
+  btn.className = 'search-result'
+
+  const header = document.createElement('div')
+  header.className = 'search-result-header'
+
+  const channelEl = document.createElement('span')
+  channelEl.className = 'search-result-channel'
+  channelEl.textContent = `#${entry.channel}`
+
+  const timeEl = document.createElement('span')
+  timeEl.className = 'search-result-time'
+  timeEl.textContent = `${formatDateFromKey(getDateKey(entry.timestamp))} ${formatNotificationTime(entry.timestamp)}`
+
+  header.appendChild(channelEl)
+  header.appendChild(timeEl)
+  btn.appendChild(header)
+
+  if (entry.title) {
+    const titleEl = document.createElement('div')
+    titleEl.className = 'search-result-title'
+    titleEl.textContent = entry.title
+    btn.appendChild(titleEl)
+  }
+
+  const excerpt = searchExcerpt(entry)
+  if (excerpt) {
+    const excerptEl = document.createElement('div')
+    excerptEl.className = 'search-result-excerpt'
+    excerptEl.textContent = excerpt
+    btn.appendChild(excerptEl)
+  }
+
+  btn.addEventListener('click', () => {
+    closeSearchDialog()
+    void handleNotificationNavigation({ channel: entry.channel, id: entry.id })
+  })
+
+  return btn
+}
+
+function renderSearchResults(results) {
+  searchResultsEl.innerHTML = ''
+  if (!results.length) {
+    renderSearchMessage('一致するメッセージが見つかりませんでした', 'search-empty')
+    return
+  }
+  for (const entry of results) {
+    searchResultsEl.appendChild(createSearchResultRow(entry))
+  }
+}
+
+async function runSearch(query) {
+  const requestId = ++searchRequestId
+  try {
+    const res = await fetch(apiUrl(`api/search?q=${encodeURIComponent(query)}`))
+    if (requestId !== searchRequestId) return
+    if (!res.ok) {
+      renderSearchMessage('検索に失敗しました', 'search-error')
+      return
+    }
+    const data = await res.json()
+    if (requestId !== searchRequestId) return
+    renderSearchResults(data.results || [])
+  } catch {
+    if (requestId !== searchRequestId) return
+    renderSearchMessage('ネットワークエラーが発生しました', 'search-error')
+  }
+}
+
+function openSearchDialog() {
+  if (!searchDialog) return
+  closeSidebar()
+  SignalyDialog.open(searchDialog, { focusEl: searchInput })
+  if (!searchInput.value.trim()) renderSearchMessage('キーワードを入力してください')
+}
+
+function closeSearchDialog() {
+  SignalyDialog.close(searchDialog)
+}
+
+searchBtn?.addEventListener('click', openSearchDialog)
+searchClose?.addEventListener('click', closeSearchDialog)
+searchDialog?.addEventListener('click', (e) => {
+  if (e.target === searchDialog) closeSearchDialog()
+})
+
+searchInput?.addEventListener('input', () => {
+  const query = searchInput.value.trim()
+  searchRequestId++
+  clearTimeout(searchDebounceTimer)
+  if (!query) {
+    renderSearchMessage('キーワードを入力してください')
+    return
+  }
+  renderSearchMessage('検索中…')
+  searchDebounceTimer = setTimeout(() => runSearch(query), SEARCH_DEBOUNCE_MS)
+})
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && searchDialog?.classList.contains('open')) {
+    closeSearchDialog()
+  }
+})
+
 function updateNewNotifBanner() {
   if (!newNotifBanner || pendingNewCount <= 0) return
   const scrolled = feed.scrollTop > 40

@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 from itsdangerous import BadData
+from sqlalchemy import or_
 
 import auth
 from database import ApiKey, Channel, ChannelGroup, Notification, PushSubscription, get_session, init_db
@@ -415,6 +416,19 @@ def _save_notification(entry: dict) -> None:
         session.commit()
 
 
+def _notification_to_dict(r: Notification) -> dict:
+    return {
+        "id": r.id,
+        "channel": r.channel,
+        "title": r.title,
+        "message": r.message,
+        "level": r.level,
+        "timestamp": _utc_iso(r.timestamp),
+        "fields": json.loads(r.fields) if getattr(r, "fields", None) else None,
+        "color": getattr(r, "color", None),
+    }
+
+
 def _fetch_history(channel_name: str, limit: int) -> List[dict]:
     with get_session() as session:
         rows = (
@@ -424,19 +438,29 @@ def _fetch_history(channel_name: str, limit: int) -> List[dict]:
             .limit(limit)
             .all()
         )
-        return [
-            {
-                "id": r.id,
-                "channel": r.channel,
-                "title": r.title,
-                "message": r.message,
-                "level": r.level,
-                "timestamp": _utc_iso(r.timestamp),
-                "fields": json.loads(r.fields) if getattr(r, "fields", None) else None,
-                "color": getattr(r, "color", None),
-            }
-            for r in rows
-        ]
+        return [_notification_to_dict(r) for r in rows]
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _search_notifications(query: str, limit: int) -> List[dict]:
+    pattern = f"%{_escape_like(query)}%"
+    with get_session() as session:
+        rows = (
+            session.query(Notification)
+            .filter(
+                or_(
+                    Notification.title.like(pattern, escape="\\"),
+                    Notification.message.like(pattern, escape="\\"),
+                )
+            )
+            .order_by(Notification.timestamp.desc())
+            .limit(limit)
+            .all()
+        )
+        return [_notification_to_dict(r) for r in rows]
 
 
 def _endpoint_hash(endpoint: str) -> str:
@@ -925,6 +949,16 @@ async def get_history(channel_name: str, limit: int = 200, email: str = Depends(
 
     logs = await asyncio.to_thread(_fetch_history, channel_name, limit)
     return {"logs": logs}
+
+
+@app.get("/api/search")
+async def search_notifications(q: str = "", limit: int = 50, email: str = Depends(auth.require_auth)):
+    query = q.strip()
+    if not query:
+        return {"results": []}
+    limit = max(1, min(limit, 100))
+    results = await asyncio.to_thread(_search_notifications, query, limit)
+    return {"results": results}
 
 
 @app.get("/api/stream/{channel_name}")
