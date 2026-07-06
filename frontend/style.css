@@ -351,6 +351,18 @@ html, body {
   text-overflow: ellipsis;
 }
 
+.channel-group-badge {
+  flex-shrink: 0;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 1px 6px;
+  min-width: 18px;
+  text-align: center;
+}
+
 .channel-group-actions {
   display: flex;
   align-items: center;
