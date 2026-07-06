@@ -52,6 +52,8 @@ const LAST_CHANNEL_KEY = 'signaly-last-channel'
 const UNREAD_KEY = 'signaly-unread'
 const PUSH_DISABLED_KEY = 'signaly-push-disabled'
 const CHANNEL_TREE_KEY = 'signaly-channel-tree'
+const COLLAPSED_GROUPS_KEY = 'signaly-collapsed-groups'
+const UNGROUPED_SECTION_ID = '__ungrouped__'
 const UNREAD_POLL_MS = 15000
 const NEW_CARD_FADE_MS = 60000
 
@@ -431,6 +433,32 @@ function clearChannelTreeCache() {
   }
 }
 
+function loadCollapsedGroups() {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_GROUPS_KEY)
+    return raw ? new Set(JSON.parse(raw)) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
+function saveCollapsedGroups() {
+  try {
+    localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify([...collapsedGroups]))
+  } catch {
+    // quota exceeded 等は無視
+  }
+}
+
+function toggleGroupCollapsed(groupId) {
+  if (collapsedGroups.has(groupId)) {
+    collapsedGroups.delete(groupId)
+  } else {
+    collapsedGroups.add(groupId)
+  }
+  saveCollapsedGroups()
+}
+
 function showAuthenticatedShell() {
   SignalySettings.showAuthenticated()
   if (addGroupBtn) addGroupBtn.hidden = false
@@ -681,11 +709,16 @@ const REORDER_DONE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill=
   <polyline points="20 6 9 17 4 12"/>
 </svg>`
 
+const GROUP_COLLAPSE_ICON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <polyline points="9 6 15 12 9 18"/>
+</svg>`
+
 let channelGroups = []
 let channelUngrouped = []
 let groupsById = {}
 let reorderMode = false
 let lastChannelTree = null
+let collapsedGroups = loadCollapsedGroups()
 
 function createReorderHandle() {
   const handle = document.createElement('span')
@@ -778,6 +811,28 @@ function createGroupActions(...buttons) {
   return actions
 }
 
+function setGroupCollapsedUI(section, btn, groupName, collapsed) {
+  section.classList.toggle('channel-group--collapsed', collapsed)
+  btn.setAttribute('aria-expanded', String(!collapsed))
+  const title = `${groupName} を${collapsed ? '展開する' : '折りたたむ'}`
+  btn.title = title
+  btn.setAttribute('aria-label', title)
+}
+
+function createGroupCollapseToggle(section, sectionId, groupName) {
+  const btn = document.createElement('button')
+  btn.type = 'button'
+  btn.className = 'group-collapse-btn'
+  btn.innerHTML = GROUP_COLLAPSE_ICON
+  setGroupCollapsedUI(section, btn, groupName, collapsedGroups.has(sectionId))
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation()
+    toggleGroupCollapsed(sectionId)
+    setGroupCollapsedUI(section, btn, groupName, collapsedGroups.has(sectionId))
+  })
+  return btn
+}
+
 function createGroupSection(group) {
   const section = document.createElement('section')
   section.className = 'channel-group'
@@ -800,6 +855,8 @@ function createGroupSection(group) {
     labelWrap.appendChild(label)
     header.appendChild(labelWrap)
   } else {
+    labelWrap.appendChild(createGroupCollapseToggle(section, group.id, group.name))
+
     const notifIndicator = document.createElement('span')
     notifIndicator.className = 'notif-indicator'
     notifIndicator.setAttribute('aria-hidden', 'true')
@@ -847,7 +904,15 @@ function createUngroupedSection() {
   label.className = 'channel-group-label'
   label.textContent = '未分類'
 
-  header.appendChild(label)
+  const labelWrap = document.createElement('div')
+  labelWrap.className = 'channel-group-label-wrap'
+
+  if (!reorderMode) {
+    labelWrap.appendChild(createGroupCollapseToggle(section, UNGROUPED_SECTION_ID, '未分類'))
+  }
+  labelWrap.appendChild(label)
+  header.appendChild(labelWrap)
+
   if (!reorderMode) {
     header.appendChild(createGroupActions(
       createAddBtn('チャンネルを追加', () => openCreateChannelDialog(null)),
@@ -1056,7 +1121,10 @@ function updateAllBadges() {
 // ── Channel selection ─────────────────────────────────────────────────────────
 
 async function selectChannel(name) {
-  if (activeChannel === name) return
+  if (activeChannel === name) {
+    closeSidebar()
+    return
+  }
 
   // SSE 接続前に保存（接続後の markChannelRead で上書きされないようにする）
   const sinceLastRead = lastReadAt[name]

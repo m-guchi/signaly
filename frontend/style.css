@@ -366,6 +366,36 @@ html, body {
   padding-bottom: 2px;
 }
 
+.channel-group--collapsed .channel-group-channels {
+  display: none;
+}
+
+.group-collapse-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-subtle);
+  cursor: pointer;
+  transform: rotate(90deg);
+  transition: transform 0.15s, color 0.1s, background 0.1s;
+}
+
+.group-collapse-btn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.channel-group--collapsed .group-collapse-btn {
+  transform: rotate(0deg);
+}
+
 .group-settings-btn {
   flex-shrink: 0;
   display: flex;
