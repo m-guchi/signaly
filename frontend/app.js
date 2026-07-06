@@ -133,9 +133,8 @@ mobileSidebarMq.addEventListener('change', () => {
   if (!isMobileSidebar()) closeSidebar()
 })
 
-// ── 画面左端の右スワイプでサイドバーを開く ──────────────────────────────────
+// ── 画面左半分の右スワイプでサイドバーを開く ──────────────────────────────────
 
-const EDGE_SWIPE_ZONE = 24
 const EDGE_SWIPE_THRESHOLD = 40
 
 let edgeSwipeStart = null
@@ -143,7 +142,7 @@ let edgeSwipeStart = null
 document.addEventListener('touchstart', (e) => {
   if (!isMobileSidebar() || sidebar.classList.contains('sidebar--open')) return
   const touch = e.touches[0]
-  if (touch.clientX > EDGE_SWIPE_ZONE) return
+  if (touch.clientX > window.innerWidth / 2) return
   edgeSwipeStart = { x: touch.clientX, y: touch.clientY }
 }, { passive: true })
 
