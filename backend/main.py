@@ -384,14 +384,16 @@ def _delete_notification(notification_id: str) -> Optional[str]:
     return channel_name
 
 
-def _clear_channel_notifications(channel_name: str) -> int:
-    """チャンネルの通知履歴を全削除し、削除件数を返す。"""
+def _delete_notifications(ids: List[str]) -> Dict[str, List[str]]:
+    """複数の通知を削除し、チャンネルごとに削除できたIDのリストを返す。"""
+    deleted_by_channel: Dict[str, List[str]] = {}
     with get_session() as session:
-        deleted = session.query(Notification).filter(
-            Notification.channel == channel_name
-        ).delete(synchronize_session=False)
+        rows = session.query(Notification).filter(Notification.id.in_(ids)).all()
+        for row in rows:
+            deleted_by_channel.setdefault(row.channel, []).append(row.id)
+            session.delete(row)
         session.commit()
-    return deleted
+    return deleted_by_channel
 
 
 async def _notify_login(email: str, user_info: dict, request: Request) -> None:
@@ -808,6 +810,17 @@ class GroupNotificationSettingRequest(BaseModel):
     enabled: bool
 
 
+class DeleteNotificationsRequest(BaseModel):
+    ids: List[str]
+
+    @field_validator("ids")
+    @classmethod
+    def validate_ids(cls, v: List[str]) -> List[str]:
+        if not v:
+            raise ValueError("削除する通知を選択してください")
+        return v
+
+
 @app.get("/api/channels")
 async def get_channels(request: Request, email: str = Depends(auth.require_auth)):
     return await asyncio.to_thread(_fetch_channels_tree, request)
@@ -933,15 +946,14 @@ async def delete_notification(notification_id: str, email: str = Depends(auth.re
     return {"ok": True}
 
 
-@app.delete("/api/channels/{channel_id}/notifications")
-async def clear_channel_notifications(channel_id: str, email: str = Depends(auth.require_auth)):
-    channels = await asyncio.to_thread(_fetch_channels)
-    if channel_id not in channels:
-        raise HTTPException(status_code=404, detail="Channel not found")
-    channel_name = channels[channel_id]
-    deleted = await asyncio.to_thread(_clear_channel_notifications, channel_name)
-    _broadcast(channel_name, "clear", {})
-    return {"ok": True, "deleted": deleted}
+@app.delete("/api/notifications")
+async def delete_notifications(body: DeleteNotificationsRequest, email: str = Depends(auth.require_auth)):
+    deleted_by_channel = await asyncio.to_thread(_delete_notifications, body.ids)
+    total = 0
+    for channel_name, ids in deleted_by_channel.items():
+        _broadcast(channel_name, "delete-bulk", {"ids": ids})
+        total += len(ids)
+    return {"ok": True, "deleted": total}
 
 
 @app.get("/api/history/{channel_name}")

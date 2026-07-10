@@ -6,10 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Cache-Control" content="no-cache">
   <title>Signaly</title>
-  <link rel="manifest" href="manifest.json?v=1.2.1">
-  <link rel="icon" href="icon.svg?v=1.2.1" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.2.1">
-  <link rel="stylesheet" href="style.css?v=1.2.1">
+  <link rel="manifest" href="manifest.json?v=1.3.0">
+  <link rel="icon" href="icon.svg?v=1.3.0" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.3.0">
+  <link rel="stylesheet" href="style.css?v=1.3.0">
   <meta name="theme-color" content="#000000">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -87,6 +87,13 @@
             <line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
         </button>
+        <button id="notifications-btn" class="header-icon-btn" type="button" title="通知" aria-label="通知">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span id="notifications-badge" class="header-icon-badge" hidden></span>
+        </button>
         <span id="status" class="status status--disconnected" title="接続状態">●</span>
       </header>
       <div id="feed-viewport" class="feed-viewport">
@@ -103,6 +110,13 @@
       <button id="new-notif-banner" type="button" class="new-notif-banner" hidden>新着</button>
       <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
       <div id="empty-state" class="empty-state" hidden>通知はまだありません</div>
+      <div id="notif-select-bar" class="notif-select-bar" hidden>
+        <span id="notif-select-count" class="notif-select-count">0件選択中</span>
+        <div class="notif-select-actions">
+          <button id="notif-select-cancel" type="button" class="create-channel-copy">キャンセル</button>
+          <button id="notif-select-delete" type="button" class="create-channel-copy channel-delete-btn" disabled>削除</button>
+        </div>
+      </div>
     </main>
   </div>
 
@@ -250,7 +264,7 @@
         </div>
 
         <div class="channel-settings-actions">
-          <button id="channel-settings-clear" type="button" class="create-channel-copy channel-delete-btn">通知履歴を削除</button>
+          <button id="channel-settings-select-delete" type="button" class="create-channel-copy channel-delete-btn">通知を選択して削除</button>
           <button id="channel-settings-delete" type="button" class="create-channel-copy channel-delete-btn">チャンネルを削除</button>
         </div>
       </div>
@@ -279,7 +293,7 @@
     </div>
   </div>
 
-  <div id="notifications-clear-dialog" class="changelog-dialog dialog-centered confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="notifications-clear-title" aria-describedby="notifications-clear-desc">
+  <div id="notif-bulk-delete-dialog" class="changelog-dialog dialog-centered confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="notif-bulk-delete-title" aria-describedby="notif-bulk-delete-desc">
     <div class="changelog-panel create-channel-panel confirm-dialog-panel">
       <div class="confirm-dialog-icon" aria-hidden="true">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -288,16 +302,16 @@
           <line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
       </div>
-      <h2 class="confirm-dialog-title" id="notifications-clear-title">通知履歴を削除しますか？</h2>
+      <h2 class="confirm-dialog-title" id="notif-bulk-delete-title">選択した通知を削除しますか？</h2>
       <div class="create-channel-body confirm-dialog-body">
-        <p class="confirm-dialog-message" id="notifications-clear-desc">
-          チャンネル <strong id="notifications-clear-name"></strong> の通知履歴をすべて削除します。チャンネル自体は削除されません。
+        <p class="confirm-dialog-message" id="notif-bulk-delete-desc">
+          選択した <strong id="notif-bulk-delete-count"></strong> 件の通知を削除します。
         </p>
         <p class="create-channel-hint">この操作は元に戻せません。</p>
-        <p id="notifications-clear-error" class="create-channel-error" hidden></p>
+        <p id="notif-bulk-delete-error" class="create-channel-error" hidden></p>
         <div class="confirm-dialog-actions">
-          <button id="notifications-clear-cancel" type="button" class="create-channel-copy">キャンセル</button>
-          <button id="notifications-clear-confirm" type="button" class="create-channel-submit confirm-delete-btn">削除する</button>
+          <button id="notif-bulk-delete-cancel" type="button" class="create-channel-copy">キャンセル</button>
+          <button id="notif-bulk-delete-confirm" type="button" class="create-channel-submit confirm-delete-btn">削除する</button>
         </div>
       </div>
     </div>
@@ -436,6 +450,20 @@
     </div>
   </div>
 
+  <div id="notifications-dialog" class="changelog-dialog dialog-centered" role="dialog" aria-modal="true" aria-label="通知">
+    <div class="changelog-panel search-panel">
+      <div class="changelog-header">
+        <h2 class="changelog-title">通知</h2>
+        <button id="notifications-close" class="changelog-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="search-body">
+        <div id="notifications-list" class="search-results">
+          <p class="search-hint">未読メッセージはありません</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="changelog-dialog" class="changelog-dialog" role="dialog" aria-modal="true" aria-label="更新履歴">
     <div class="changelog-panel">
       <div class="changelog-header">
@@ -465,10 +493,10 @@
     </div>
   </div>
 
-  <script defer src="changelog.js?v=1.2.1"></script>
-  <script defer src="dialog.js?v=1.2.1"></script>
-  <script defer src="reorder.js?v=1.2.1"></script>
-  <script defer src="settings.js?v=1.2.1"></script>
-  <script defer src="app.js?v=1.2.1"></script>
+  <script defer src="changelog.js?v=1.3.0"></script>
+  <script defer src="dialog.js?v=1.3.0"></script>
+  <script defer src="reorder.js?v=1.3.0"></script>
+  <script defer src="settings.js?v=1.3.0"></script>
+  <script defer src="app.js?v=1.3.0"></script>
 </body>
 </html>

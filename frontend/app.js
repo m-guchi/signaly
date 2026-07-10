@@ -85,6 +85,8 @@ const newNotifBanner = document.getElementById('new-notif-banner')
 const toastEl = document.getElementById('toast')
 const channelTitle = document.getElementById('channel-title')
 const channelSettingsHeaderBtn = document.getElementById('channel-settings-header-btn')
+const notificationsBtn = document.getElementById('notifications-btn')
+const notificationsBadge = document.getElementById('notifications-badge')
 const statusEl = document.getElementById('status')
 const sidebar = document.getElementById('sidebar')
 const sidebarToggle = document.getElementById('sidebar-toggle')
@@ -493,6 +495,13 @@ function updateDocumentTitle() {
   const total = totalUnread()
   document.title = total > 0 ? `(${total > 99 ? '99+' : total}) Signaly` : 'Signaly'
   void updateAppBadge(total)
+  updateNotificationsBadge(total)
+}
+
+function updateNotificationsBadge(total = totalUnread()) {
+  if (!notificationsBadge) return
+  notificationsBadge.textContent = total > 99 ? '99+' : String(total)
+  notificationsBadge.hidden = total === 0
 }
 
 async function updateAppBadge(total = totalUnread()) {
@@ -587,6 +596,7 @@ notificationDeleteConfirm?.addEventListener('click', async () => {
       return
     }
     removeNotificationCard(id)
+    removeUnreadListRow(id)
     closeNotificationDeleteDialog()
   } catch {
     notificationDeleteError.textContent = 'ネットワークエラーが発生しました'
@@ -615,11 +625,32 @@ function removeNotificationCard(id) {
   }
 }
 
-function clearFeedForActiveChannel() {
-  seenIds.clear()
-  feed.innerHTML = ''
-  if (feedStickyDate) feedStickyDate.hidden = true
-  if (emptyState) emptyState.hidden = false
+function removeUnreadListRow(id) {
+  const row = notificationsListEl?.querySelector(`.search-result[data-id="${CSS.escape(id)}"]`)
+  if (!row) return
+  const channelName = row.dataset.channel
+  row.remove()
+  if (!notificationsListEl.querySelector('.search-result')) {
+    renderNotificationsMessage('未読メッセージはありません', 'search-empty')
+  }
+  if (channelName && unread[channelName] > 0) {
+    setChannelUnread(channelName, unread[channelName] - 1)
+    updateAllBadges()
+  }
+}
+
+async function deleteUnreadNotification(id) {
+  try {
+    const res = await fetch(apiUrl(`api/notifications/${id}`), { method: 'DELETE' })
+    if (!res.ok && res.status !== 404) {
+      showToast('削除に失敗しました')
+      return
+    }
+    removeNotificationCard(id)
+    removeUnreadListRow(id)
+  } catch {
+    showToast('ネットワークエラーが発生しました')
+  }
 }
 
 function createCard(entry, { isNew = false } = {}) {
@@ -635,6 +666,21 @@ function createCard(entry, { isNew = false } = {}) {
 
   const header = document.createElement('div')
   header.className = 'notif-header'
+
+  const checkbox = document.createElement('input')
+  checkbox.type = 'checkbox'
+  checkbox.className = 'notif-card-checkbox'
+  checkbox.setAttribute('aria-label', 'この通知を選択')
+  checkbox.checked = selectedNotifIds.has(entry.id)
+  checkbox.addEventListener('click', (e) => e.stopPropagation())
+  checkbox.addEventListener('change', () => toggleNotifSelection(entry.id, checkbox.checked))
+  header.appendChild(checkbox)
+
+  card.addEventListener('click', () => {
+    if (!notifSelectMode) return
+    checkbox.checked = !checkbox.checked
+    toggleNotifSelection(entry.id, checkbox.checked)
+  })
 
   const title = document.createElement('span')
   title.className = 'notif-title'
@@ -802,10 +848,15 @@ function searchExcerpt(entry) {
   return String(entry.message || '').replace(/\s+/g, ' ').trim().slice(0, 140)
 }
 
-function createSearchResultRow(entry) {
-  const btn = document.createElement('button')
-  btn.type = 'button'
-  btn.className = 'search-result'
+function createResultRow(entry, onSelect, { deletable = false } = {}) {
+  const row = document.createElement('div')
+  row.className = 'search-result'
+  row.dataset.id = entry.id
+  row.dataset.channel = entry.channel
+
+  const main = document.createElement('button')
+  main.type = 'button'
+  main.className = 'search-result-main'
 
   const header = document.createElement('div')
   header.className = 'search-result-header'
@@ -820,13 +871,13 @@ function createSearchResultRow(entry) {
 
   header.appendChild(channelEl)
   header.appendChild(timeEl)
-  btn.appendChild(header)
+  main.appendChild(header)
 
   if (entry.title) {
     const titleEl = document.createElement('div')
     titleEl.className = 'search-result-title'
     titleEl.textContent = entry.title
-    btn.appendChild(titleEl)
+    main.appendChild(titleEl)
   }
 
   const excerpt = searchExcerpt(entry)
@@ -834,15 +885,35 @@ function createSearchResultRow(entry) {
     const excerptEl = document.createElement('div')
     excerptEl.className = 'search-result-excerpt'
     excerptEl.textContent = excerpt
-    btn.appendChild(excerptEl)
+    main.appendChild(excerptEl)
   }
 
-  btn.addEventListener('click', () => {
-    closeSearchDialog()
+  main.addEventListener('click', () => {
+    onSelect()
     void handleNotificationNavigation({ channel: entry.channel, id: entry.id })
   })
 
-  return btn
+  row.appendChild(main)
+
+  if (deletable) {
+    const deleteBtn = document.createElement('button')
+    deleteBtn.type = 'button'
+    deleteBtn.className = 'search-result-delete'
+    deleteBtn.title = '通知を削除'
+    deleteBtn.setAttribute('aria-label', '通知を削除')
+    deleteBtn.innerHTML = NOTIF_DELETE_ICON
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      void deleteUnreadNotification(entry.id)
+    })
+    row.appendChild(deleteBtn)
+  }
+
+  return row
+}
+
+function createSearchResultRow(entry) {
+  return createResultRow(entry, closeSearchDialog)
 }
 
 function renderSearchResults(results) {
@@ -938,6 +1009,81 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && searchDialog?.classList.contains('open')) {
     closeSearchDialog()
   }
+  if (e.key === 'Escape' && notificationsDialog?.classList.contains('open')) {
+    closeNotificationsDialog()
+  }
+})
+
+// ── Notifications (unread) ──────────────────────────────────────────────────
+
+const NOTIFICATIONS_HISTORY_LIMIT = 200
+
+const notificationsDialog = document.getElementById('notifications-dialog')
+const notificationsClose = document.getElementById('notifications-close')
+const notificationsListEl = document.getElementById('notifications-list')
+
+let notificationsRequestId = 0
+
+function renderNotificationsMessage(text, className = 'search-hint') {
+  notificationsListEl.innerHTML = ''
+  const p = document.createElement('p')
+  p.className = className
+  p.textContent = text
+  notificationsListEl.appendChild(p)
+}
+
+function renderNotificationsList(entries) {
+  notificationsListEl.innerHTML = ''
+  if (!entries.length) {
+    renderNotificationsMessage('未読メッセージはありません', 'search-empty')
+    return
+  }
+  for (const entry of entries) {
+    notificationsListEl.appendChild(createResultRow(entry, closeNotificationsDialog, { deletable: true }))
+  }
+}
+
+async function fetchUnreadForChannel(name) {
+  try {
+    const res = await fetch(apiUrl(`api/history/${name}?limit=${NOTIFICATIONS_HISTORY_LIMIT}`))
+    if (!res.ok) return []
+    const { logs } = await res.json()
+    const since = lastReadAt[name]
+    return since === undefined ? logs : logs.filter(e => parseTimestamp(e.timestamp) > since)
+  } catch {
+    return []
+  }
+}
+
+async function loadUnreadMessages() {
+  const requestId = ++notificationsRequestId
+  const names = allChannelNames().filter(name => unread[name] > 0)
+  if (!names.length) {
+    renderNotificationsList([])
+    return
+  }
+  renderNotificationsMessage('読み込み中…')
+  const lists = await Promise.all(names.map(fetchUnreadForChannel))
+  if (requestId !== notificationsRequestId) return
+  const entries = lists.flat().sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp))
+  renderNotificationsList(entries)
+}
+
+function openNotificationsDialog() {
+  if (!notificationsDialog) return
+  closeSidebar()
+  SignalyDialog.open(notificationsDialog)
+  void loadUnreadMessages()
+}
+
+function closeNotificationsDialog() {
+  SignalyDialog.close(notificationsDialog)
+}
+
+notificationsBtn?.addEventListener('click', openNotificationsDialog)
+notificationsClose?.addEventListener('click', closeNotificationsDialog)
+notificationsDialog?.addEventListener('click', (e) => {
+  if (e.target === notificationsDialog) closeNotificationsDialog()
 })
 
 function updateNewNotifBanner() {
@@ -1389,7 +1535,6 @@ function markAllChannelsRead() {
   for (const name of allChannelNames()) {
     if (unread[name]) markChannelRead(name)
   }
-  closeSidebar()
   showToast('既読にしました')
 }
 
@@ -1453,6 +1598,8 @@ async function selectChannel(name) {
     closeSidebar()
     return
   }
+
+  exitNotifSelectMode()
 
   // SSE 接続前に保存（接続後の markChannelRead で上書きされないようにする）
   const sinceLastRead = lastReadAt[name]
@@ -1698,8 +1845,16 @@ function connectSSE(channelName) {
     if (activeChannel === channelName) removeNotificationCard(data.id)
   })
 
-  es.addEventListener('clear', () => {
-    if (activeChannel === channelName) clearFeedForActiveChannel()
+  es.addEventListener('delete-bulk', (event) => {
+    let data
+    try {
+      data = JSON.parse(event.data)
+    } catch {
+      return
+    }
+    if (activeChannel === channelName) {
+      for (const id of data.ids || []) removeNotificationCard(id)
+    }
   })
 
   es.onerror = () => {
@@ -2727,18 +2882,25 @@ const channelSettingsCopy = document.getElementById('channel-settings-copy')
 const channelSettingsRevealWebhook = document.getElementById('channel-settings-reveal-webhook')
 const channelSettingsWebhookSection = document.getElementById('channel-settings-webhook-section')
 const channelSettingsDelete = document.getElementById('channel-settings-delete')
-const channelSettingsClear = document.getElementById('channel-settings-clear')
+const channelSettingsSelectDelete = document.getElementById('channel-settings-select-delete')
 const channelSettingsNotifSegment = document.getElementById('channel-settings-notif-segment')
 const channelDeleteDialog = document.getElementById('channel-delete-dialog')
 const channelDeleteName = document.getElementById('channel-delete-name')
 const channelDeleteError = document.getElementById('channel-delete-error')
 const channelDeleteCancel = document.getElementById('channel-delete-cancel')
 const channelDeleteConfirm = document.getElementById('channel-delete-confirm')
-const notificationsClearDialog = document.getElementById('notifications-clear-dialog')
-const notificationsClearName = document.getElementById('notifications-clear-name')
-const notificationsClearError = document.getElementById('notifications-clear-error')
-const notificationsClearCancel = document.getElementById('notifications-clear-cancel')
-const notificationsClearConfirm = document.getElementById('notifications-clear-confirm')
+const notifSelectBar = document.getElementById('notif-select-bar')
+const notifSelectCount = document.getElementById('notif-select-count')
+const notifSelectCancel = document.getElementById('notif-select-cancel')
+const notifSelectDelete = document.getElementById('notif-select-delete')
+const notifBulkDeleteDialog = document.getElementById('notif-bulk-delete-dialog')
+const notifBulkDeleteCount = document.getElementById('notif-bulk-delete-count')
+const notifBulkDeleteError = document.getElementById('notif-bulk-delete-error')
+const notifBulkDeleteCancel = document.getElementById('notif-bulk-delete-cancel')
+const notifBulkDeleteConfirm = document.getElementById('notif-bulk-delete-confirm')
+
+let notifSelectMode = false
+const selectedNotifIds = new Set()
 
 let channelSettingsId = null
 let channelSettingsOriginalName = null
@@ -2751,7 +2913,7 @@ function resetChannelSettingsDialog() {
   hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy, 'URL をコピー')
   channelSettingsRenameBtn.disabled = false
   channelSettingsDelete.disabled = false
-  channelSettingsClear.disabled = false
+  channelSettingsSelectDelete.disabled = false
   setNotifSegmentDisabled(channelSettingsNotifSegment, false)
 }
 
@@ -2781,7 +2943,6 @@ channelSettingsDialog?.addEventListener('click', (e) => {
   if (
     e.target === channelSettingsDialog
     && !channelDeleteDialog?.classList.contains('open')
-    && !notificationsClearDialog?.classList.contains('open')
   ) {
     closeChannelSettingsDialog()
   }
@@ -2847,12 +3008,16 @@ document.addEventListener('keydown', (e) => {
     closeChannelDeleteDialog()
     return
   }
-  if (e.key === 'Escape' && notificationsClearDialog?.classList.contains('open')) {
-    closeNotificationsClearDialog()
+  if (e.key === 'Escape' && notifBulkDeleteDialog?.classList.contains('open')) {
+    closeNotifBulkDeleteDialog()
     return
   }
   if (e.key === 'Escape' && channelSettingsDialog?.classList.contains('open')) {
     closeChannelSettingsDialog()
+    return
+  }
+  if (e.key === 'Escape' && notifSelectMode) {
+    exitNotifSelectMode()
   }
 })
 
@@ -2984,68 +3149,108 @@ channelDeleteConfirm?.addEventListener('click', async () => {
   }
 })
 
-function openNotificationsClearDialog() {
-  if (!channelSettingsOriginalName) return
-  notificationsClearName.textContent = channelSettingsOriginalName
-  notificationsClearError.hidden = true
-  notificationsClearError.textContent = ''
-  notificationsClearConfirm.disabled = false
-  notificationsClearCancel.disabled = false
-  SignalyDialog.open(notificationsClearDialog, { focusEl: notificationsClearCancel })
+function updateNotifSelectBar() {
+  notifSelectCount.textContent = `${selectedNotifIds.size}件選択中`
+  notifSelectDelete.disabled = selectedNotifIds.size === 0
 }
 
-function closeNotificationsClearDialog() {
-  SignalyDialog.close(notificationsClearDialog)
-  notificationsClearError.hidden = true
-  notificationsClearError.textContent = ''
-  notificationsClearConfirm.disabled = false
-  notificationsClearCancel.disabled = false
+function toggleNotifSelection(id, checked) {
+  if (checked) selectedNotifIds.add(id)
+  else selectedNotifIds.delete(id)
+  const card = feed.querySelector(`.notif-card[data-id="${CSS.escape(id)}"]`)
+  card?.classList.toggle('notif-card--selected', checked)
+  updateNotifSelectBar()
 }
 
-channelSettingsClear?.addEventListener('click', () => {
+function enterNotifSelectMode() {
+  if (notifSelectMode) return
+  notifSelectMode = true
+  selectedNotifIds.clear()
+  feed.classList.add('notif-select-mode')
+  updateNotifSelectBar()
+  notifSelectBar.hidden = false
+}
+
+function exitNotifSelectMode() {
+  if (!notifSelectMode) return
+  notifSelectMode = false
+  selectedNotifIds.clear()
+  feed.classList.remove('notif-select-mode')
+  feed.querySelectorAll('.notif-card-checkbox').forEach((cb) => { cb.checked = false })
+  feed.querySelectorAll('.notif-card--selected').forEach((c) => c.classList.remove('notif-card--selected'))
+  notifSelectBar.hidden = true
+}
+
+channelSettingsSelectDelete?.addEventListener('click', async () => {
   if (!channelSettingsId || !channelSettingsOriginalName) return
-  openNotificationsClearDialog()
+  const targetChannel = channelSettingsOriginalName
+  closeChannelSettingsDialog()
+  if (activeChannel !== targetChannel) {
+    await selectChannel(targetChannel)
+  }
+  enterNotifSelectMode()
 })
 
-notificationsClearCancel?.addEventListener('click', closeNotificationsClearDialog)
+notifSelectCancel?.addEventListener('click', exitNotifSelectMode)
 
-notificationsClearDialog?.addEventListener('click', (e) => {
-  if (e.target === notificationsClearDialog) closeNotificationsClearDialog()
+notifSelectDelete?.addEventListener('click', () => {
+  if (selectedNotifIds.size === 0) return
+  openNotifBulkDeleteDialog()
 })
 
-notificationsClearConfirm?.addEventListener('click', async () => {
-  if (!channelSettingsId || !channelSettingsOriginalName) return
+function openNotifBulkDeleteDialog() {
+  notifBulkDeleteCount.textContent = String(selectedNotifIds.size)
+  notifBulkDeleteError.hidden = true
+  notifBulkDeleteError.textContent = ''
+  notifBulkDeleteConfirm.disabled = false
+  notifBulkDeleteCancel.disabled = false
+  SignalyDialog.open(notifBulkDeleteDialog, { focusEl: notifBulkDeleteCancel })
+}
 
-  notificationsClearError.hidden = true
-  notificationsClearConfirm.disabled = true
-  notificationsClearCancel.disabled = true
-  channelSettingsClear.disabled = true
+function closeNotifBulkDeleteDialog() {
+  SignalyDialog.close(notifBulkDeleteDialog)
+  notifBulkDeleteError.hidden = true
+  notifBulkDeleteError.textContent = ''
+  notifBulkDeleteConfirm.disabled = false
+  notifBulkDeleteCancel.disabled = false
+}
+
+notifBulkDeleteCancel?.addEventListener('click', closeNotifBulkDeleteDialog)
+
+notifBulkDeleteDialog?.addEventListener('click', (e) => {
+  if (e.target === notifBulkDeleteDialog) closeNotifBulkDeleteDialog()
+})
+
+notifBulkDeleteConfirm?.addEventListener('click', async () => {
+  const ids = [...selectedNotifIds]
+  if (ids.length === 0) return
+
+  notifBulkDeleteError.hidden = true
+  notifBulkDeleteConfirm.disabled = true
+  notifBulkDeleteCancel.disabled = true
 
   try {
-    const res = await fetch(apiUrl(`api/channels/${channelSettingsId}/notifications`), {
+    const res = await fetch(apiUrl('api/notifications'), {
       method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
-      notificationsClearError.textContent = parseApiError(data, '削除に失敗しました')
-      notificationsClearError.hidden = false
+      notifBulkDeleteError.textContent = parseApiError(data, '削除に失敗しました')
+      notifBulkDeleteError.hidden = false
       return
     }
 
-    const clearedName = channelSettingsOriginalName
-    closeNotificationsClearDialog()
-
-    if (activeChannel === clearedName) {
-      clearFeedForActiveChannel()
-      markChannelRead(clearedName)
-    }
+    for (const id of ids) removeNotificationCard(id)
+    closeNotifBulkDeleteDialog()
+    exitNotifSelectMode()
   } catch {
-    notificationsClearError.textContent = 'ネットワークエラーが発生しました'
-    notificationsClearError.hidden = false
+    notifBulkDeleteError.textContent = 'ネットワークエラーが発生しました'
+    notifBulkDeleteError.hidden = false
   } finally {
-    notificationsClearConfirm.disabled = false
-    notificationsClearCancel.disabled = false
-    channelSettingsClear.disabled = false
+    notifBulkDeleteConfirm.disabled = false
+    notifBulkDeleteCancel.disabled = false
   }
 })
 

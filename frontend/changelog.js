@@ -1,8 +1,15 @@
 'use strict'
 
-const APP_VERSION = '1.2.1'
+const APP_VERSION = '1.3.0'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.3.0',
+    date: '2026-07-11',
+    changes: [
+      'チャンネル設定の「通知履歴を削除」ボタンを「通知を選択して削除」ボタンに変更し、削除したい通知だけを選んで削除できるようになった',
+    ],
+  },
   {
     version: '1.2.1',
     date: '2026-07-07',
