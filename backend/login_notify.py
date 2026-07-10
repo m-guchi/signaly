@@ -11,6 +11,7 @@ from fastapi import Request
 logger = logging.getLogger(__name__)
 
 LOGIN_WEBHOOK_URL = os.getenv("LOGIN_WEBHOOK_URL", "").strip()
+APP_NAME = "Signaly"  # 通知タイトルに使うアプリ名。他アプリへ流用する場合はここだけ変更する
 
 
 def client_ip(request: Request) -> str:
@@ -49,7 +50,7 @@ def build_login_notification(
     fields.append({"name": "User-Agent", "value": ua, "inline": False})
 
     return {
-        "title": "🔐 Signaly ログイン",
+        "title": f"🔐 {APP_NAME} ログイン",
         "message": "",
         "level": "info",
         "color": "#57f287",
