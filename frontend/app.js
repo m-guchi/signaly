@@ -83,6 +83,8 @@ const feedStateRetry = document.getElementById('feed-state-retry')
 const emptyState = document.getElementById('empty-state')
 const newNotifBanner = document.getElementById('new-notif-banner')
 const toastEl = document.getElementById('toast')
+const toastMessageEl = document.getElementById('toast-message')
+const toastCloseBtn = document.getElementById('toast-close')
 const channelTitle = document.getElementById('channel-title')
 const channelSettingsHeaderBtn = document.getElementById('channel-settings-header-btn')
 const notificationsBtn = document.getElementById('notifications-btn')
@@ -471,13 +473,21 @@ function showAuthenticatedShell() {
 
 let toastTimer = null
 
-function showToast(message) {
+function hideToast() {
   if (!toastEl) return
-  toastEl.textContent = message
+  toastEl.hidden = true
+  clearTimeout(toastTimer)
+}
+
+function showToast(message) {
+  if (!toastEl || !toastMessageEl) return
+  toastMessageEl.textContent = message
   toastEl.hidden = false
   clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => { toastEl.hidden = true }, 2000)
+  toastTimer = setTimeout(hideToast, 2000)
 }
+
+toastCloseBtn?.addEventListener('click', hideToast)
 
 function markChannelRead(channelName, timestampMs = Date.now()) {
   lastReadAt[channelName] = timestampMs
@@ -598,6 +608,7 @@ notificationDeleteConfirm?.addEventListener('click', async () => {
     removeNotificationCard(id)
     removeUnreadListRow(id)
     closeNotificationDeleteDialog()
+    showToast('削除しました')
   } catch {
     notificationDeleteError.textContent = 'ネットワークエラーが発生しました'
     notificationDeleteError.hidden = false
@@ -648,6 +659,7 @@ async function deleteUnreadNotification(id) {
     }
     removeNotificationCard(id)
     removeUnreadListRow(id)
+    showToast('削除しました')
   } catch {
     showToast('ネットワークエラーが発生しました')
   }
@@ -3245,6 +3257,7 @@ notifBulkDeleteConfirm?.addEventListener('click', async () => {
     for (const id of ids) removeNotificationCard(id)
     closeNotifBulkDeleteDialog()
     exitNotifSelectMode()
+    showToast(`${ids.length}件削除しました`)
   } catch {
     notifBulkDeleteError.textContent = 'ネットワークエラーが発生しました'
     notifBulkDeleteError.hidden = false

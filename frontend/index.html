@@ -108,7 +108,10 @@
         </div>
       </div>
       <button id="new-notif-banner" type="button" class="new-notif-banner" hidden>新着</button>
-      <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+      <div id="toast" class="toast" role="status" aria-live="polite" hidden>
+        <span id="toast-message" class="toast-message"></span>
+        <button type="button" id="toast-close" class="toast-close" aria-label="閉じる">✕</button>
+      </div>
       <div id="empty-state" class="empty-state" hidden>通知はまだありません</div>
       <div id="notif-select-bar" class="notif-select-bar" hidden>
         <span id="notif-select-count" class="notif-select-count">0件選択中</span>
