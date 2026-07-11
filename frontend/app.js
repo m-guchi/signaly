@@ -1444,6 +1444,7 @@ function renderChannelTree(data, selectName = null, options = {}) {
     channelTitle.textContent = 'チャンネルを選択'
     if (channelSettingsHeaderBtn) channelSettingsHeaderBtn.hidden = true
     hideFeedState()
+    exitNotifSelectMode()
     return
   }
 
