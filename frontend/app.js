@@ -6,6 +6,29 @@ function apiUrl(path) {
   return '/' + path.replace(/^\//, '')
 }
 
+// 確認ダイアログの「エラー非表示→ボタン無効化→実行→成功/失敗処理→再有効化」という
+// 定型処理を共通化する。run には showError を渡すので、API失敗時は
+// showError(message) を呼んで return すればよい（例外を投げると通信エラー扱いになる）。
+async function runConfirmAction({ confirmBtn, cancelBtn, errorEl, extraButtons = [], run }) {
+  errorEl.hidden = true
+  errorEl.textContent = ''
+  const buttons = [confirmBtn, cancelBtn, ...extraButtons]
+  for (const btn of buttons) btn.disabled = true
+
+  const showError = (message) => {
+    errorEl.textContent = message
+    errorEl.hidden = false
+  }
+
+  try {
+    await run(showError)
+  } catch {
+    showError('ネットワークエラーが発生しました')
+  } finally {
+    for (const btn of buttons) btn.disabled = false
+  }
+}
+
 function channelFromQuery() {
   return new URLSearchParams(location.search).get('channel')
 }
@@ -598,32 +621,26 @@ function deleteNotificationsRequest(ids) {
   })
 }
 
-notificationDeleteConfirm?.addEventListener('click', async () => {
+notificationDeleteConfirm?.addEventListener('click', () => {
   const id = pendingDeleteNotificationId
   if (!id) return
 
-  notificationDeleteError.hidden = true
-  notificationDeleteConfirm.disabled = true
-  notificationDeleteCancel.disabled = true
-
-  try {
-    const res = await deleteNotificationsRequest([id])
-    if (!res.ok) {
-      notificationDeleteError.textContent = '削除に失敗しました'
-      notificationDeleteError.hidden = false
-      return
-    }
-    removeNotificationCard(id)
-    removeUnreadListRow(id)
-    closeNotificationDeleteDialog()
-    showToast('削除しました')
-  } catch {
-    notificationDeleteError.textContent = 'ネットワークエラーが発生しました'
-    notificationDeleteError.hidden = false
-  } finally {
-    notificationDeleteConfirm.disabled = false
-    notificationDeleteCancel.disabled = false
-  }
+  runConfirmAction({
+    confirmBtn: notificationDeleteConfirm,
+    cancelBtn: notificationDeleteCancel,
+    errorEl: notificationDeleteError,
+    run: async (showError) => {
+      const res = await deleteNotificationsRequest([id])
+      if (!res.ok) {
+        showError('削除に失敗しました')
+        return
+      }
+      removeNotificationCard(id)
+      removeUnreadListRow(id)
+      closeNotificationDeleteDialog()
+      showToast('削除しました')
+    },
+  })
 })
 
 function deleteNotification(id) {
@@ -2862,32 +2879,26 @@ groupSettingsNotifSegment && setupNotifSegment(groupSettingsNotifSegment, async 
   }
 })
 
-groupDeleteConfirm?.addEventListener('click', async () => {
+groupDeleteConfirm?.addEventListener('click', () => {
   if (!groupSettingsId) return
 
-  groupDeleteError.hidden = true
-  groupDeleteConfirm.disabled = true
-  groupDeleteCancel.disabled = true
+  runConfirmAction({
+    confirmBtn: groupDeleteConfirm,
+    cancelBtn: groupDeleteCancel,
+    errorEl: groupDeleteError,
+    run: async (showError) => {
+      const res = await fetch(apiUrl(`api/groups/${groupSettingsId}`), { method: 'DELETE' })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        showError(parseApiError(data, '削除に失敗しました'))
+        return
+      }
 
-  try {
-    const res = await fetch(apiUrl(`api/groups/${groupSettingsId}`), { method: 'DELETE' })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) {
-      groupDeleteError.textContent = parseApiError(data, '削除に失敗しました')
-      groupDeleteError.hidden = false
-      return
-    }
-
-    closeGroupDeleteDialog()
-    closeGroupSettingsDialog()
-    await refreshChannels(activeChannel)
-  } catch {
-    groupDeleteError.textContent = 'ネットワークエラーが発生しました'
-    groupDeleteError.hidden = false
-  } finally {
-    groupDeleteConfirm.disabled = false
-    groupDeleteCancel.disabled = false
-  }
+      closeGroupDeleteDialog()
+      closeGroupSettingsDialog()
+      await refreshChannels(activeChannel)
+    },
+  })
 })
 
 document.addEventListener('keydown', (e) => {
@@ -3135,49 +3146,40 @@ channelDeleteDialog?.addEventListener('click', (e) => {
   if (e.target === channelDeleteDialog) closeChannelDeleteDialog()
 })
 
-channelDeleteConfirm?.addEventListener('click', async () => {
+channelDeleteConfirm?.addEventListener('click', () => {
   if (!channelSettingsId || !channelSettingsOriginalName) return
 
-  channelDeleteError.hidden = true
-  channelDeleteConfirm.disabled = true
-  channelDeleteCancel.disabled = true
-  channelSettingsDelete.disabled = true
-  channelSettingsRenameBtn.disabled = true
+  runConfirmAction({
+    confirmBtn: channelDeleteConfirm,
+    cancelBtn: channelDeleteCancel,
+    errorEl: channelDeleteError,
+    extraButtons: [channelSettingsDelete, channelSettingsRenameBtn],
+    run: async (showError) => {
+      const res = await fetch(apiUrl(`api/channels/${channelSettingsId}`), {
+        method: 'DELETE',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        showError(parseApiError(data, '削除に失敗しました'))
+        return
+      }
 
-  try {
-    const res = await fetch(apiUrl(`api/channels/${channelSettingsId}`), {
-      method: 'DELETE',
-    })
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) {
-      channelDeleteError.textContent = parseApiError(data, '削除に失敗しました')
-      channelDeleteError.hidden = false
-      return
-    }
+      const deletedName = channelSettingsOriginalName
+      delete unread[deletedName]
+      saveUnread()
+      delete lastReadAt[deletedName]
+      saveLastReadAt()
+      closeChannelDeleteDialog()
+      closeChannelSettingsDialog()
 
-    const deletedName = channelSettingsOriginalName
-    delete unread[deletedName]
-    saveUnread()
-    delete lastReadAt[deletedName]
-    saveLastReadAt()
-    closeChannelDeleteDialog()
-    closeChannelSettingsDialog()
+      if (activeChannel === deletedName && eventSource) {
+        eventSource.close()
+        eventSource = null
+      }
 
-    if (activeChannel === deletedName && eventSource) {
-      eventSource.close()
-      eventSource = null
-    }
-
-    await refreshChannels(activeChannel === deletedName ? null : activeChannel)
-  } catch {
-    channelDeleteError.textContent = 'ネットワークエラーが発生しました'
-    channelDeleteError.hidden = false
-  } finally {
-    channelDeleteConfirm.disabled = false
-    channelDeleteCancel.disabled = false
-    channelSettingsDelete.disabled = false
-    channelSettingsRenameBtn.disabled = false
-  }
+      await refreshChannels(activeChannel === deletedName ? null : activeChannel)
+    },
+  })
 })
 
 function updateNotifSelectBar() {
@@ -3268,34 +3270,28 @@ notifBulkDeleteDialog?.addEventListener('click', (e) => {
   if (e.target === notifBulkDeleteDialog) closeNotifBulkDeleteDialog()
 })
 
-notifBulkDeleteConfirm?.addEventListener('click', async () => {
+notifBulkDeleteConfirm?.addEventListener('click', () => {
   const ids = [...selectedNotifIds]
   if (ids.length === 0) return
 
-  notifBulkDeleteError.hidden = true
-  notifBulkDeleteConfirm.disabled = true
-  notifBulkDeleteCancel.disabled = true
+  runConfirmAction({
+    confirmBtn: notifBulkDeleteConfirm,
+    cancelBtn: notifBulkDeleteCancel,
+    errorEl: notifBulkDeleteError,
+    run: async (showError) => {
+      const res = await deleteNotificationsRequest(ids)
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        showError(parseApiError(data, '削除に失敗しました'))
+        return
+      }
 
-  try {
-    const res = await deleteNotificationsRequest(ids)
-    const data = await res.json().catch(() => ({}))
-    if (!res.ok) {
-      notifBulkDeleteError.textContent = parseApiError(data, '削除に失敗しました')
-      notifBulkDeleteError.hidden = false
-      return
-    }
-
-    for (const id of ids) removeNotificationCard(id)
-    closeNotifBulkDeleteDialog()
-    exitNotifSelectMode()
-    showToast(`${data.deleted}件削除しました`)
-  } catch {
-    notifBulkDeleteError.textContent = 'ネットワークエラーが発生しました'
-    notifBulkDeleteError.hidden = false
-  } finally {
-    notifBulkDeleteConfirm.disabled = false
-    notifBulkDeleteCancel.disabled = false
-  }
+      for (const id of ids) removeNotificationCard(id)
+      closeNotifBulkDeleteDialog()
+      exitNotifSelectMode()
+      showToast(`${data.deleted}件削除しました`)
+    },
+  })
 })
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
