@@ -1298,7 +1298,8 @@ function createGroupSection(group) {
     labelWrap.appendChild(label)
     header.appendChild(labelWrap)
   } else {
-    labelWrap.appendChild(createGroupCollapseToggle(section, group.id, group.name))
+    const collapseBtn = createGroupCollapseToggle(section, group.id, group.name)
+    labelWrap.appendChild(collapseBtn)
 
     const notifIndicator = document.createElement('span')
     notifIndicator.className = 'notif-indicator'
@@ -1328,6 +1329,12 @@ function createGroupSection(group) {
       settingsBtn,
       createAddBtn('チャンネルを追加', () => openCreateChannelDialog(group.id)),
     ))
+
+    header.classList.add('channel-group-header--clickable')
+    header.addEventListener('click', () => {
+      toggleGroupCollapsed(group.id)
+      setGroupCollapsedUI(section, collapseBtn, group.name, collapsedGroups.has(group.id))
+    })
   }
 
   const list = document.createElement('div')
@@ -1356,8 +1363,10 @@ function createUngroupedSection() {
   const labelWrap = document.createElement('div')
   labelWrap.className = 'channel-group-label-wrap'
 
+  let collapseBtn = null
   if (!reorderMode) {
-    labelWrap.appendChild(createGroupCollapseToggle(section, UNGROUPED_SECTION_ID, '未分類'))
+    collapseBtn = createGroupCollapseToggle(section, UNGROUPED_SECTION_ID, '未分類')
+    labelWrap.appendChild(collapseBtn)
   }
   labelWrap.appendChild(label)
 
@@ -1373,6 +1382,11 @@ function createUngroupedSection() {
     header.appendChild(createGroupActions(
       createAddBtn('チャンネルを追加', () => openCreateChannelDialog(null)),
     ))
+    header.classList.add('channel-group-header--clickable')
+    header.addEventListener('click', () => {
+      toggleGroupCollapsed(UNGROUPED_SECTION_ID)
+      setGroupCollapsedUI(section, collapseBtn, '未分類', collapsedGroups.has(UNGROUPED_SECTION_ID))
+    })
   }
 
   const list = document.createElement('div')

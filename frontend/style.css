@@ -331,6 +331,10 @@ html, body {
   opacity: 1;
 }
 
+.channel-group-header--clickable {
+  cursor: pointer;
+}
+
 .channel-group-label-wrap {
   flex: 1;
   min-width: 0;
