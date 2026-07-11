@@ -531,11 +531,13 @@ app.add_middleware(
 async def no_cache_frontend_assets(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
-    if path.endswith((".js", ".css")) and request.url.query:
+    if path.endswith((".js", ".css")) and request.url.query and response.status_code < 400:
         # ?v=xxx 付きのバージョン管理された静的ファイルは、
         # 内容が変わればURLも変わるため長期キャッシュしてよい。
         # ここを no-cache にしていると起動のたびに全アセットの再検証待ちが発生し、
         # PWA の起動が遅くなる。
+        # エラーレスポンスまで immutable キャッシュすると、障害が直っても
+        # ブラウザ・CDN 側に壊れたレスポンスが1年間残り続けてしまう。
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     elif path == "/" or path.endswith((".html", ".js", ".css")):
         response.headers["Cache-Control"] = "no-cache, must-revalidate"
