@@ -42,6 +42,7 @@ from webhook import parse_webhook_payload
 BASE_DIR = Path(__file__).parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
 DOCS_DIR = BASE_DIR.parent / "docs"
+APP_VERSION = json.loads((BASE_DIR.parent / "version.json").read_text())["version"]
 
 # channel_name → list of subscriber queues
 _subscribers: Dict[str, List[asyncio.Queue]] = {}
@@ -372,18 +373,6 @@ async def _dispatch_notification(channel_name: str, parsed: dict) -> dict:
     return entry
 
 
-def _delete_notification(notification_id: str) -> Optional[str]:
-    """通知を削除し、削除できた場合は所属チャンネル名を返す。"""
-    with get_session() as session:
-        row = session.query(Notification).filter(Notification.id == notification_id).first()
-        if not row:
-            return None
-        channel_name = row.channel
-        session.delete(row)
-        session.commit()
-    return channel_name
-
-
 def _delete_notifications(ids: List[str]) -> Dict[str, List[str]]:
     """複数の通知を削除し、チャンネルごとに削除できたIDのリストを返す。"""
     deleted_by_channel: Dict[str, List[str]] = {}
@@ -531,11 +520,16 @@ app.add_middleware(
 async def no_cache_frontend_assets(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
-    if path.endswith((".js", ".css")) and request.url.query:
-        # ?v=xxx 付きのバージョン管理された静的ファイルは、
-        # 内容が変わればURLも変わるため長期キャッシュしてよい。
+    is_current_version = request.query_params.get("v") == APP_VERSION
+    if path.endswith((".js", ".css")) and is_current_version and response.status_code < 400:
+        # ?v=<現在のバージョン> の静的ファイルは、内容が変わればバージョンも
+        # 上がる（bump_version.py が ?v= を同期する）ため長期キャッシュしてよい。
         # ここを no-cache にしていると起動のたびに全アセットの再検証待ちが発生し、
         # PWA の起動が遅くなる。
+        # クエリの値を検証しないと、?v= の更新忘れや無関係なクエリでも
+        # immutable 扱いになってしまうため、現在のバージョンと一致する場合のみ許可する。
+        # エラーレスポンスまで immutable キャッシュすると、障害が直っても
+        # ブラウザ・CDN 側に壊れたレスポンスが1年間残り続けてしまう。
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     elif path == "/" or path.endswith((".html", ".js", ".css")):
         response.headers["Cache-Control"] = "no-cache, must-revalidate"
@@ -935,15 +929,6 @@ async def delete_group(group_id: str, email: str = Depends(auth.require_auth)):
     if not name:
         raise HTTPException(status_code=404, detail="Group not found")
     return {"ok": True, "name": name}
-
-
-@app.delete("/api/notifications/{notification_id}")
-async def delete_notification(notification_id: str, email: str = Depends(auth.require_auth)):
-    channel_name = await asyncio.to_thread(_delete_notification, notification_id)
-    if not channel_name:
-        raise HTTPException(status_code=404, detail="Notification not found")
-    _broadcast(channel_name, "delete", {"id": notification_id})
-    return {"ok": True}
 
 
 @app.delete("/api/notifications")

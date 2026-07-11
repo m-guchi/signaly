@@ -8,6 +8,17 @@
   display: none !important;
 }
 
+:root {
+  /* 重なり順の共通スケール。要素追加時はここに揃える（値の大小で優先順位を判断できる）。 */
+  --z-sticky: 10;
+  --z-backdrop: 40;
+  --z-sidebar: 50;
+  --z-overlay: 100;
+  --z-dialog: 150;
+  --z-dialog-confirm: 200;
+  --z-toast: 300;
+}
+
 :root,
 :root[data-theme="dark"] {
   --bg: #0d0d0d;
@@ -329,6 +340,10 @@ html, body {
 .channel-group-header:hover .group-settings-btn,
 .channel-group-header:focus-within .group-settings-btn {
   opacity: 1;
+}
+
+.channel-group-header--clickable {
+  cursor: pointer;
 }
 
 .channel-group-label-wrap {
@@ -661,7 +676,7 @@ html, body {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.5);
-  z-index: 40;
+  z-index: var(--z-backdrop);
 }
 
 .sidebar-backdrop.visible {
@@ -782,7 +797,7 @@ html, body {
   left: 50%;
   bottom: 20px;
   transform: translateX(-50%);
-  z-index: 10;
+  z-index: var(--z-sticky);
   padding: 8px 16px;
   border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
   border-radius: 20px;
@@ -804,7 +819,8 @@ html, body {
   left: 16px;
   right: 16px;
   bottom: max(16px, env(safe-area-inset-bottom));
-  z-index: 60;
+  /* ダイアログを含む他の全要素より常に手前に出す */
+  z-index: var(--z-toast);
   margin: 0 auto;
   max-width: 480px;
   display: flex;
@@ -1062,7 +1078,7 @@ html, body {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 10;
+  z-index: var(--z-sticky);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1238,7 +1254,7 @@ html, body {
   background: var(--overlay-bg);
   align-items: flex-end;
   justify-content: center;
-  z-index: 150;
+  z-index: var(--z-dialog);
 }
 
 .changelog-dialog.open {
@@ -1459,7 +1475,7 @@ html, body {
 }
 
 .confirm-dialog {
-  z-index: 200;
+  z-index: var(--z-dialog-confirm);
 }
 
 .confirm-dialog-panel {
@@ -2183,7 +2199,7 @@ html, body {
   align-items: center;
   justify-content: center;
   background: var(--overlay-bg);
-  z-index: 10;
+  z-index: var(--z-sticky);
   padding: 20px 16px;
 }
 
@@ -2246,7 +2262,7 @@ html, body {
 .docs-header {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: var(--z-sticky);
   padding: 12px 16px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
@@ -2592,7 +2608,7 @@ html, body {
   background: var(--bg);
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: var(--z-overlay);
 }
 
 #login-overlay.visible {
@@ -2650,7 +2666,7 @@ html, body {
     top: 0;
     left: 0;
     bottom: 0;
-    z-index: 50;
+    z-index: var(--z-sidebar);
     width: min(92vw, 320px);
     min-width: min(92vw, 320px);
     transform: translateX(-100%);
