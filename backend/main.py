@@ -373,18 +373,6 @@ async def _dispatch_notification(channel_name: str, parsed: dict) -> dict:
     return entry
 
 
-def _delete_notification(notification_id: str) -> Optional[str]:
-    """通知を削除し、削除できた場合は所属チャンネル名を返す。"""
-    with get_session() as session:
-        row = session.query(Notification).filter(Notification.id == notification_id).first()
-        if not row:
-            return None
-        channel_name = row.channel
-        session.delete(row)
-        session.commit()
-    return channel_name
-
-
 def _delete_notifications(ids: List[str]) -> Dict[str, List[str]]:
     """複数の通知を削除し、チャンネルごとに削除できたIDのリストを返す。"""
     deleted_by_channel: Dict[str, List[str]] = {}
@@ -941,15 +929,6 @@ async def delete_group(group_id: str, email: str = Depends(auth.require_auth)):
     if not name:
         raise HTTPException(status_code=404, detail="Group not found")
     return {"ok": True, "name": name}
-
-
-@app.delete("/api/notifications/{notification_id}")
-async def delete_notification(notification_id: str, email: str = Depends(auth.require_auth)):
-    channel_name = await asyncio.to_thread(_delete_notification, notification_id)
-    if not channel_name:
-        raise HTTPException(status_code=404, detail="Notification not found")
-    _broadcast(channel_name, "delete", {"id": notification_id})
-    return {"ok": True}
 
 
 @app.delete("/api/notifications")

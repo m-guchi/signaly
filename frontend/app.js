@@ -590,6 +590,14 @@ document.addEventListener('keydown', (e) => {
   }
 })
 
+function deleteNotificationsRequest(ids) {
+  return fetch(apiUrl('api/notifications'), {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  })
+}
+
 notificationDeleteConfirm?.addEventListener('click', async () => {
   const id = pendingDeleteNotificationId
   if (!id) return
@@ -599,8 +607,8 @@ notificationDeleteConfirm?.addEventListener('click', async () => {
   notificationDeleteCancel.disabled = true
 
   try {
-    const res = await fetch(apiUrl(`api/notifications/${id}`), { method: 'DELETE' })
-    if (!res.ok && res.status !== 404) {
+    const res = await deleteNotificationsRequest([id])
+    if (!res.ok) {
       notificationDeleteError.textContent = '削除に失敗しました'
       notificationDeleteError.hidden = false
       return
@@ -657,8 +665,8 @@ function removeUnreadListRow(id) {
 
 async function deleteUnreadNotification(id) {
   try {
-    const res = await fetch(apiUrl(`api/notifications/${id}`), { method: 'DELETE' })
-    if (!res.ok && res.status !== 404) {
+    const res = await deleteNotificationsRequest([id])
+    if (!res.ok) {
       showToast('削除に失敗しました')
       return
     }
@@ -1866,16 +1874,6 @@ function connectSSE(channelName) {
     // デスクトップ通知
     void showDesktopNotification(entry)
   }
-
-  es.addEventListener('delete', (event) => {
-    let data
-    try {
-      data = JSON.parse(event.data)
-    } catch {
-      return
-    }
-    if (activeChannel === channelName) removeNotificationCard(data.id)
-  })
 
   es.addEventListener('delete-bulk', (event) => {
     let data
@@ -3279,11 +3277,7 @@ notifBulkDeleteConfirm?.addEventListener('click', async () => {
   notifBulkDeleteCancel.disabled = true
 
   try {
-    const res = await fetch(apiUrl('api/notifications'), {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids }),
-    })
+    const res = await deleteNotificationsRequest(ids)
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
       notifBulkDeleteError.textContent = parseApiError(data, '削除に失敗しました')
