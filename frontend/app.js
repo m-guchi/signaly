@@ -2917,6 +2917,7 @@ const channelDeleteCancel = document.getElementById('channel-delete-cancel')
 const channelDeleteConfirm = document.getElementById('channel-delete-confirm')
 const notifSelectBar = document.getElementById('notif-select-bar')
 const notifSelectCount = document.getElementById('notif-select-count')
+const notifSelectAll = document.getElementById('notif-select-all')
 const notifSelectCancel = document.getElementById('notif-select-cancel')
 const notifSelectDelete = document.getElementById('notif-select-delete')
 const notifBulkDeleteDialog = document.getElementById('notif-bulk-delete-dialog')
@@ -3178,6 +3179,9 @@ channelDeleteConfirm?.addEventListener('click', async () => {
 function updateNotifSelectBar() {
   notifSelectCount.textContent = `${selectedNotifIds.size}件選択中`
   notifSelectDelete.disabled = selectedNotifIds.size === 0
+  const cardIds = [...feed.querySelectorAll('.notif-card')].map((c) => c.dataset.id)
+  const allSelected = cardIds.length > 0 && cardIds.every((id) => selectedNotifIds.has(id))
+  notifSelectAll.textContent = allSelected ? '選択を解除' : '全て選択'
 }
 
 function toggleNotifSelection(id, checked) {
@@ -3215,6 +3219,19 @@ channelSettingsSelectDelete?.addEventListener('click', async () => {
     await selectChannel(targetChannel)
   }
   enterNotifSelectMode()
+})
+
+notifSelectAll?.addEventListener('click', () => {
+  const cards = [...feed.querySelectorAll('.notif-card')]
+  const allSelected = cards.length > 0 && cards.every((c) => selectedNotifIds.has(c.dataset.id))
+  for (const card of cards) {
+    const checkbox = card.querySelector('.notif-card-checkbox')
+    if (checkbox) checkbox.checked = !allSelected
+    card.classList.toggle('notif-card--selected', !allSelected)
+    if (allSelected) selectedNotifIds.delete(card.dataset.id)
+    else selectedNotifIds.add(card.dataset.id)
+  }
+  updateNotifSelectBar()
 })
 
 notifSelectCancel?.addEventListener('click', exitNotifSelectMode)
