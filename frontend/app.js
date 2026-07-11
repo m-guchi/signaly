@@ -3288,7 +3288,7 @@ notifBulkDeleteConfirm?.addEventListener('click', async () => {
     for (const id of ids) removeNotificationCard(id)
     closeNotifBulkDeleteDialog()
     exitNotifSelectMode()
-    showToast(`${ids.length}件削除しました`)
+    showToast(`${data.deleted}件削除しました`)
   } catch {
     notifBulkDeleteError.textContent = 'ネットワークエラーが発生しました'
     notifBulkDeleteError.hidden = false
