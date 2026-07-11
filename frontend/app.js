@@ -624,8 +624,12 @@ function deleteNotification(id) {
 
 function removeNotificationCard(id) {
   seenIds.delete(id)
+  const wasSelected = selectedNotifIds.delete(id)
   const card = feed.querySelector(`.notif-card[data-id="${CSS.escape(id)}"]`)
-  if (!card) return
+  if (!card) {
+    if (wasSelected && notifSelectMode) updateNotifSelectBar()
+    return
+  }
   const dateKey = card.dataset.date
   card.remove()
   if (dateKey && !feed.querySelector(`.notif-card[data-date="${CSS.escape(dateKey)}"]`)) {
@@ -634,6 +638,7 @@ function removeNotificationCard(id) {
   if (emptyState && !feed.querySelector('.notif-card')) {
     emptyState.hidden = false
   }
+  if (wasSelected && notifSelectMode) updateNotifSelectBar()
 }
 
 function removeUnreadListRow(id) {
