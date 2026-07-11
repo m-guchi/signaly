@@ -714,15 +714,7 @@ function createCard(entry, { isNew = false } = {}) {
   checkbox.className = 'notif-card-checkbox'
   checkbox.setAttribute('aria-label', 'この通知を選択')
   checkbox.checked = selectedNotifIds.has(entry.id)
-  checkbox.addEventListener('click', (e) => e.stopPropagation())
-  checkbox.addEventListener('change', () => toggleNotifSelection(entry.id, checkbox.checked))
   header.appendChild(checkbox)
-
-  card.addEventListener('click', () => {
-    if (!notifSelectMode) return
-    checkbox.checked = !checkbox.checked
-    toggleNotifSelection(entry.id, checkbox.checked)
-  })
 
   const title = document.createElement('span')
   title.className = 'notif-title'
@@ -3197,6 +3189,26 @@ function toggleNotifSelection(id, checked) {
   card?.classList.toggle('notif-card--selected', checked)
   updateNotifSelectBar()
 }
+
+// カードごとにリスナーを持たせず、feed に委譲した1つのリスナーで
+// チェックボックスの変更・カードクリックの両方を処理する。
+feed.addEventListener('change', (e) => {
+  const checkbox = e.target.closest('.notif-card-checkbox')
+  if (!checkbox) return
+  const card = checkbox.closest('.notif-card')
+  if (card) toggleNotifSelection(card.dataset.id, checkbox.checked)
+})
+
+feed.addEventListener('click', (e) => {
+  if (e.target.closest('.notif-card-checkbox')) return
+  if (!notifSelectMode) return
+  const card = e.target.closest('.notif-card')
+  if (!card) return
+  const checkbox = card.querySelector('.notif-card-checkbox')
+  if (!checkbox) return
+  checkbox.checked = !checkbox.checked
+  toggleNotifSelection(card.dataset.id, checkbox.checked)
+})
 
 function enterNotifSelectMode() {
   if (notifSelectMode) return
