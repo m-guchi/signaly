@@ -42,6 +42,7 @@ from webhook import parse_webhook_payload
 BASE_DIR = Path(__file__).parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
 DOCS_DIR = BASE_DIR.parent / "docs"
+APP_VERSION = json.loads((BASE_DIR.parent / "version.json").read_text())["version"]
 
 # channel_name → list of subscriber queues
 _subscribers: Dict[str, List[asyncio.Queue]] = {}
@@ -531,11 +532,14 @@ app.add_middleware(
 async def no_cache_frontend_assets(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
-    if path.endswith((".js", ".css")) and request.url.query and response.status_code < 400:
-        # ?v=xxx 付きのバージョン管理された静的ファイルは、
-        # 内容が変わればURLも変わるため長期キャッシュしてよい。
+    is_current_version = request.query_params.get("v") == APP_VERSION
+    if path.endswith((".js", ".css")) and is_current_version and response.status_code < 400:
+        # ?v=<現在のバージョン> の静的ファイルは、内容が変わればバージョンも
+        # 上がる（bump_version.py が ?v= を同期する）ため長期キャッシュしてよい。
         # ここを no-cache にしていると起動のたびに全アセットの再検証待ちが発生し、
         # PWA の起動が遅くなる。
+        # クエリの値を検証しないと、?v= の更新忘れや無関係なクエリでも
+        # immutable 扱いになってしまうため、現在のバージョンと一致する場合のみ許可する。
         # エラーレスポンスまで immutable キャッシュすると、障害が直っても
         # ブラウザ・CDN 側に壊れたレスポンスが1年間残り続けてしまう。
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
