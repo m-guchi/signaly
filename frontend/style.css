@@ -1360,6 +1360,12 @@ html, body {
   color: var(--text);
 }
 
+.changelog-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .changelog-close {
   background: none;
   border: none;

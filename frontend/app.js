@@ -1059,6 +1059,7 @@ const NOTIFICATIONS_HISTORY_LIMIT = 200
 
 const notificationsDialog = document.getElementById('notifications-dialog')
 const notificationsClose = document.getElementById('notifications-close')
+const notificationsMarkAllRead = document.getElementById('notifications-mark-all-read')
 const notificationsListEl = document.getElementById('notifications-list')
 
 let notificationsRequestId = 0
@@ -1123,6 +1124,10 @@ notificationsBtn?.addEventListener('click', openNotificationsDialog)
 notificationsClose?.addEventListener('click', closeNotificationsDialog)
 notificationsDialog?.addEventListener('click', (e) => {
   if (e.target === notificationsDialog) closeNotificationsDialog()
+})
+notificationsMarkAllRead?.addEventListener('click', () => {
+  markAllChannelsRead()
+  closeNotificationsDialog()
 })
 
 function updateNewNotifBanner() {
