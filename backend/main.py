@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 from itsdangerous import BadData
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 
 import auth
 from database import ApiKey, Channel, ChannelGroup, Notification, PushSubscription, get_session, init_db
@@ -420,16 +420,34 @@ def _notification_to_dict(r: Notification) -> dict:
     }
 
 
-def _fetch_history(channel_name: str, limit: int) -> List[dict]:
+def _fetch_history(
+    channel_name: str,
+    limit: int,
+    before_timestamp: Optional[datetime] = None,
+    before_id: Optional[str] = None,
+) -> tuple[List[dict], bool]:
     with get_session() as session:
+        q = session.query(Notification).filter(Notification.channel == channel_name)
+        if before_timestamp is not None:
+            if before_id is not None:
+                q = q.filter(
+                    or_(
+                        Notification.timestamp < before_timestamp,
+                        and_(
+                            Notification.timestamp == before_timestamp,
+                            Notification.id < before_id,
+                        ),
+                    )
+                )
+            else:
+                q = q.filter(Notification.timestamp < before_timestamp)
         rows = (
-            session.query(Notification)
-            .filter(Notification.channel == channel_name)
-            .order_by(Notification.timestamp.desc())
-            .limit(limit)
+            q.order_by(Notification.timestamp.desc(), Notification.id.desc())
+            .limit(limit + 1)
             .all()
         )
-        return [_notification_to_dict(r) for r in rows]
+        has_more = len(rows) > limit
+        return [_notification_to_dict(r) for r in rows[:limit]], has_more
 
 
 def _escape_like(value: str) -> str:
@@ -942,13 +960,29 @@ async def delete_notifications(body: DeleteNotificationsRequest, email: str = De
 
 
 @app.get("/api/history/{channel_name}")
-async def get_history(channel_name: str, limit: int = 200, email: str = Depends(auth.require_auth)):
+async def get_history(
+    channel_name: str,
+    limit: int = 200,
+    before_timestamp: Optional[str] = None,
+    before_id: Optional[str] = None,
+    email: str = Depends(auth.require_auth),
+):
     channels = await asyncio.to_thread(_fetch_channels)
     if channel_name not in channels.values():
         raise HTTPException(status_code=404, detail="Channel not found")
 
-    logs = await asyncio.to_thread(_fetch_history, channel_name, limit)
-    return {"logs": logs}
+    limit = max(1, min(limit, 500))
+    before_ts = None
+    if before_timestamp:
+        try:
+            before_ts = datetime.fromisoformat(before_timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid before_timestamp")
+
+    logs, has_more = await asyncio.to_thread(
+        _fetch_history, channel_name, limit, before_ts, before_id
+    )
+    return {"logs": logs, "has_more": has_more}
 
 
 @app.get("/api/search")

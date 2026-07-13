@@ -792,6 +792,35 @@ html, body {
   background: var(--border);
 }
 
+.feed-load-more {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 12px;
+}
+
+.feed-load-more-btn {
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.feed-load-more-btn:hover:not(:disabled) {
+  background: var(--bg);
+  border-color: var(--text-muted);
+  color: var(--text);
+}
+
+.feed-load-more-btn:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
 .new-notif-banner {
   position: absolute;
   left: 50%;
@@ -932,23 +961,50 @@ html, body {
 /* ── Notification card ─────────────────────── */
 
 .notif-card {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  animation: slide-in 0.2s ease;
+}
+
+.notif-card-content {
+  position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px 14px;
   border-left: 3px solid var(--info);
-  animation: slide-in 0.2s ease;
+  transition: transform 0.2s ease;
+  touch-action: pan-y;
 }
 
-.notif-card[data-level="warning"] { border-left-color: var(--warning); }
-.notif-card[data-level="error"]   { border-left-color: var(--error); }
+/* スワイプで裏に見える削除アクション。.notif-card / .search-result 共通。 */
+.swipe-action {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 20px;
+  background: var(--error);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
 
-.notif-card--new {
+.is-swiping {
+  transition: none;
+}
+
+.notif-card[data-level="warning"] .notif-card-content { border-left-color: var(--warning); }
+.notif-card[data-level="error"]   .notif-card-content { border-left-color: var(--error); }
+
+.notif-card--new .notif-card-content {
   background: color-mix(in srgb, var(--accent) 12%, var(--surface));
   border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
 }
 
-.notif-card--highlight {
+.notif-card--highlight .notif-card-content {
   background: color-mix(in srgb, var(--accent) 20%, var(--surface));
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
@@ -1068,7 +1124,7 @@ html, body {
   display: none;
 }
 
-.notif-card--selected {
+.notif-card--selected .notif-card-content {
   background: color-mix(in srgb, var(--accent) 12%, var(--surface));
   border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
 }
@@ -1329,6 +1385,12 @@ html, body {
   font-size: 15px;
   font-weight: 700;
   color: var(--text);
+}
+
+.changelog-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .changelog-close {
@@ -1931,14 +1993,30 @@ html, body {
 }
 
 .search-result {
+  position: relative;
   display: flex;
   align-items: stretch;
   gap: 2px;
   border-radius: 8px;
+  overflow: hidden;
   color: var(--text);
 }
 
 .search-result:hover {
+  background: var(--surface-hover);
+}
+
+.search-result-content {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  transition: transform 0.2s ease;
+  touch-action: pan-y;
+}
+
+.search-result:hover .search-result-content {
   background: var(--surface-hover);
 }
 
