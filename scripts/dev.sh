@@ -32,7 +32,7 @@ if [[ -f "$ENV_LOCAL" ]]; then
   TUNNEL_NAME=$(grep -E '^TUNNEL_NAME=' "$ENV_LOCAL" 2>/dev/null | cut -d= -f2- || true)
   TUNNEL_HOSTNAME=$(grep -E '^TUNNEL_HOSTNAME=' "$ENV_LOCAL" 2>/dev/null | cut -d= -f2- || true)
 fi
-TUNNEL_NAME="${TUNNEL_NAME:-signaly-dev}"
+TUNNEL_NAME="${TUNNEL_NAME:-dev-tunnel}"
 
 # ── 終了時クリーンアップ ──────────────────────────────────────────────────────
 

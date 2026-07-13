@@ -10,7 +10,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_LOCAL="$ROOT_DIR/.env.local"
-TUNNEL_NAME="${TUNNEL_NAME:-signaly-dev}"
+TUNNEL_NAME="${TUNNEL_NAME:-dev-tunnel}"
 PORT=8001
 
 # WSL では IPv6 が不通のため cloudflared API がタイムアウトすることがある
