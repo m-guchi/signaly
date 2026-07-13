@@ -792,6 +792,35 @@ html, body {
   background: var(--border);
 }
 
+.feed-load-more {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 12px;
+}
+
+.feed-load-more-btn {
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.feed-load-more-btn:hover:not(:disabled) {
+  background: var(--bg);
+  border-color: var(--text-muted);
+  color: var(--text);
+}
+
+.feed-load-more-btn:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
 .new-notif-banner {
   position: absolute;
   left: 50%;

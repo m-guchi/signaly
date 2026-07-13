@@ -93,6 +93,11 @@ let pendingNewCount = 0
 let pendingHighlightId = null
 let notificationSettings = { channels: {}, groups: {} }
 let notificationPrefsReady = false
+let feedOldestTimestamp = null
+let feedOldestId = null
+let feedHasMore = false
+let feedLoadingMore = false
+let feedLoadMoreEl = null
 
 // ── DOM ──────────────────────────────────────────────────────────────────────
 
@@ -1681,6 +1686,10 @@ async function selectChannel(name) {
 
 async function loadHistory(channelName, sinceLastRead, pendingUnread = 0) {
   showFeedLoading()
+  feedOldestTimestamp = null
+  feedOldestId = null
+  feedHasMore = false
+  feedLoadMoreEl = null
   try {
     const res = await fetch(apiUrl(`api/history/${channelName}`))
     if (activeChannel !== channelName) return
@@ -1691,7 +1700,7 @@ async function loadHistory(channelName, sinceLastRead, pendingUnread = 0) {
       )
       return
     }
-    const { logs } = await res.json()
+    const { logs, has_more } = await res.json()
     if (activeChannel !== channelName) return
     hideFeedState()
     if (!logs.length) {
@@ -1721,6 +1730,14 @@ async function loadHistory(channelName, sinceLastRead, pendingUnread = 0) {
       prevDateKey = dateKey
     }
     markChannelRead(channelName, newestTs || Date.now())
+    const last = logs[logs.length - 1]
+    feedOldestTimestamp = last.timestamp
+    feedOldestId = last.id
+    feedHasMore = Boolean(has_more)
+    if (feedHasMore) {
+      feedLoadMoreEl = createLoadMoreElement(channelName)
+      feed.appendChild(feedLoadMoreEl)
+    }
     const highlightId = consumeNotificationHighlightId()
     if (highlightId) {
       requestAnimationFrame(() => highlightNotificationCard(highlightId))
@@ -1736,6 +1753,68 @@ async function loadHistory(channelName, sinceLastRead, pendingUnread = 0) {
       `読み込みに失敗しました (${msg})`,
       () => loadHistory(channelName, sinceLastRead, pendingUnread),
     )
+  }
+}
+
+function createLoadMoreElement(channelName) {
+  const wrap = document.createElement('div')
+  wrap.className = 'feed-load-more'
+  const btn = document.createElement('button')
+  btn.type = 'button'
+  btn.className = 'feed-load-more-btn'
+  btn.textContent = 'もっと読み込む'
+  btn.addEventListener('click', () => loadMoreHistory(channelName, wrap, btn))
+  wrap.appendChild(btn)
+  return wrap
+}
+
+async function loadMoreHistory(channelName, wrap, btn) {
+  if (feedLoadingMore || !feedHasMore || activeChannel !== channelName) return
+  feedLoadingMore = true
+  btn.disabled = true
+  btn.textContent = '読み込み中…'
+  try {
+    const params = new URLSearchParams()
+    if (feedOldestTimestamp) params.set('before_timestamp', feedOldestTimestamp)
+    if (feedOldestId) params.set('before_id', feedOldestId)
+    const res = await fetch(apiUrl(`api/history/${channelName}?${params.toString()}`))
+    if (activeChannel !== channelName) return
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const { logs, has_more } = await res.json()
+    if (activeChannel !== channelName) return
+
+    let prevDateKey = feed.querySelector('.notif-card:last-of-type')?.dataset.date ?? null
+    for (const entry of logs) {
+      if (seenIds.has(entry.id)) continue
+      seenIds.add(entry.id)
+      const dateKey = getDateKey(entry.timestamp)
+      if (prevDateKey !== null && prevDateKey !== dateKey) {
+        feed.insertBefore(createDateDivider(dateKey), wrap)
+      }
+      const card = createCard(entry)
+      feed.insertBefore(card, wrap)
+      prevDateKey = dateKey
+    }
+
+    if (logs.length) {
+      const last = logs[logs.length - 1]
+      feedOldestTimestamp = last.timestamp
+      feedOldestId = last.id
+    }
+    feedHasMore = Boolean(has_more)
+    if (!feedHasMore) {
+      wrap.remove()
+      feedLoadMoreEl = null
+    } else {
+      btn.disabled = false
+      btn.textContent = 'もっと読み込む'
+    }
+  } catch {
+    if (activeChannel !== channelName) return
+    btn.disabled = false
+    btn.textContent = '読み込みに失敗しました（タップして再試行）'
+  } finally {
+    feedLoadingMore = false
   }
 }
 
