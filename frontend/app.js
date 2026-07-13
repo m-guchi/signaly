@@ -700,6 +700,28 @@ async function deleteUnreadNotification(id) {
   }
 }
 
+function restoreSwipedCard(content) {
+  content.style.transform = ''
+}
+
+// ベルマーク通知一覧のスワイプ削除用（確認なし即削除）。
+async function swipeDeleteNotification(id, content) {
+  try {
+    const res = await deleteNotificationsRequest([id])
+    if (!res.ok) {
+      showToast('削除に失敗しました')
+      restoreSwipedCard(content)
+      return
+    }
+    removeNotificationCard(id)
+    removeUnreadListRow(id)
+    showToast('削除しました')
+  } catch {
+    showToast('ネットワークエラーが発生しました')
+    restoreSwipedCard(content)
+  }
+}
+
 function createCard(entry, { isNew = false } = {}) {
   const card = document.createElement('div')
   card.className = 'notif-card' + (isNew ? ' notif-card--new' : '')
@@ -707,8 +729,17 @@ function createCard(entry, { isNew = false } = {}) {
   card.dataset.id = entry.id
   card.dataset.date = getDateKey(entry.timestamp)
 
+  const swipeAction = document.createElement('div')
+  swipeAction.className = 'swipe-action'
+  swipeAction.textContent = '削除'
+  card.appendChild(swipeAction)
+
+  const content = document.createElement('div')
+  content.className = 'notif-card-content'
+  card.appendChild(content)
+
   if (entry.color) {
-    card.style.borderLeftColor = entry.color
+    content.style.borderLeftColor = entry.color
   }
 
   const header = document.createElement('div')
@@ -752,13 +783,13 @@ function createCard(entry, { isNew = false } = {}) {
   })
   header.appendChild(deleteBtn)
 
-  card.appendChild(header)
+  content.appendChild(header)
 
   if (entry.message) {
     const msg = document.createElement('div')
     msg.className = 'notif-message'
     msg.innerHTML = renderFieldValue(entry.message)
-    card.appendChild(msg)
+    content.appendChild(msg)
   }
 
   if (entry.fields && entry.fields.length > 0) {
@@ -780,7 +811,7 @@ function createCard(entry, { isNew = false } = {}) {
       fieldEl.appendChild(valueEl)
       fieldsEl.appendChild(fieldEl)
     }
-    card.appendChild(fieldsEl)
+    content.appendChild(fieldsEl)
   }
 
   return card
@@ -893,6 +924,18 @@ function createResultRow(entry, onSelect, { deletable = false } = {}) {
   row.dataset.id = entry.id
   row.dataset.channel = entry.channel
 
+  let content = row
+  if (deletable) {
+    const swipeAction = document.createElement('div')
+    swipeAction.className = 'swipe-action'
+    swipeAction.textContent = '削除'
+    row.appendChild(swipeAction)
+
+    content = document.createElement('div')
+    content.className = 'search-result-content'
+    row.appendChild(content)
+  }
+
   const main = document.createElement('button')
   main.type = 'button'
   main.className = 'search-result-main'
@@ -932,7 +975,7 @@ function createResultRow(entry, onSelect, { deletable = false } = {}) {
     void handleNotificationNavigation({ channel: entry.channel, id: entry.id })
   })
 
-  row.appendChild(main)
+  content.appendChild(main)
 
   if (deletable) {
     const deleteBtn = document.createElement('button')
@@ -945,7 +988,7 @@ function createResultRow(entry, onSelect, { deletable = false } = {}) {
       e.stopPropagation()
       void deleteUnreadNotification(entry.id)
     })
-    row.appendChild(deleteBtn)
+    content.appendChild(deleteBtn)
   }
 
   return row
@@ -3292,6 +3335,81 @@ feed.addEventListener('click', (e) => {
   if (!checkbox) return
   checkbox.checked = !checkbox.checked
   toggleNotifSelection(card.dataset.id, checkbox.checked)
+})
+
+// ── カードの左スワイプ ──────────────────────────────────────────────────────
+
+const SWIPE_DELETE_THRESHOLD = 80
+
+// cardSelector: 通知1件分の外枠（data-id を持つ要素）
+// contentSelector: 実際にスライドさせる内側レイヤー（この裏に .swipe-action が見える）
+function attachSwipeToDelete(container, cardSelector, contentSelector, onThresholdExceeded) {
+  let swipe = null
+
+  container.addEventListener('touchstart', (e) => {
+    if (notifSelectMode) return
+    const card = e.target.closest(cardSelector)
+    if (!card) return
+    const content = card.querySelector(contentSelector)
+    if (!content) return
+    const touch = e.touches[0]
+    swipe = { card, content, id: card.dataset.id, startX: touch.clientX, startY: touch.clientY, dx: 0, dragging: false }
+  }, { passive: true })
+
+  container.addEventListener('touchmove', (e) => {
+    if (!swipe) return
+    const touch = e.touches[0]
+    const dx = touch.clientX - swipe.startX
+    const dy = touch.clientY - swipe.startY
+
+    if (!swipe.dragging) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
+      if (Math.abs(dy) > Math.abs(dx)) {
+        swipe = null
+        return
+      }
+      swipe.dragging = true
+      swipe.content.classList.add('is-swiping')
+    }
+
+    e.preventDefault()
+    swipe.dx = Math.min(0, dx)
+    swipe.content.style.transform = `translateX(${swipe.dx}px)`
+  }, { passive: false })
+
+  container.addEventListener('touchend', () => {
+    if (!swipe) return
+    const { card, content, id, dx, dragging } = swipe
+    swipe = null
+    if (!dragging) return
+    content.classList.remove('is-swiping')
+
+    if (-dx > SWIPE_DELETE_THRESHOLD) {
+      onThresholdExceeded(id, card, content)
+    } else {
+      content.style.transform = ''
+    }
+  })
+
+  container.addEventListener('touchcancel', () => {
+    if (swipe?.dragging) {
+      swipe.content.classList.remove('is-swiping')
+      swipe.content.style.transform = ''
+    }
+    swipe = null
+  })
+}
+
+// #feed: 閾値を超えたら元の位置に戻し、確認ダイアログを開く（削除確定は既存のダイアログ操作）
+attachSwipeToDelete(feed, '.notif-card', '.notif-card-content', (id, card, content) => {
+  content.style.transform = ''
+  deleteNotification(id)
+})
+
+// ベルマークの通知一覧: 確認なしで即削除（既存の削除ボタンと同じ経路）
+notificationsListEl && attachSwipeToDelete(notificationsListEl, '.search-result', '.search-result-content', (id, card, content) => {
+  content.style.transform = 'translateX(-100%)'
+  void swipeDeleteNotification(id, content)
 })
 
 function enterNotifSelectMode() {
