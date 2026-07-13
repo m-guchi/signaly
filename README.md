@@ -82,7 +82,7 @@ python scripts/gen_vapid_keys.py mailto:you@example.com
 固定 URL（Named Tunnel）を使う場合は初回のみ:
 
 ```bash
-bash scripts/setup-tunnel.sh dev.<your-domain>
+bash scripts/setup-tunnel.sh <your-domain>
 ```
 
 日常の開発:
@@ -92,7 +92,7 @@ bash scripts/dev.sh
 ```
 
 - ローカル: `http://127.0.0.1:8001`
-- トンネル: `https://dev.<your-domain>/`（OAuth / PWA / Web Push はこちら）
+- トンネル: `https://<your-domain>/`（OAuth / PWA / Web Push はこちら）
 - 停止: `Ctrl+C`
 
 同一 LAN から HTTP のみ確認する場合（OAuth / Push 不可）:
