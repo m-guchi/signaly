@@ -964,6 +964,7 @@ html, body {
   position: relative;
   border-radius: 8px;
   overflow: hidden;
+  transform: translateZ(0);
   animation: slide-in 0.2s ease;
 }
 
@@ -1999,6 +2000,7 @@ html, body {
   gap: 2px;
   border-radius: 8px;
   overflow: hidden;
+  transform: translateZ(0);
   color: var(--text);
 }
 
@@ -2007,11 +2009,13 @@ html, body {
 }
 
 .search-result-content {
+  position: relative;
   display: flex;
   align-items: stretch;
   gap: 2px;
   flex: 1;
   min-width: 0;
+  background: var(--surface);
   transition: transform 0.2s ease;
   touch-action: pan-y;
 }
