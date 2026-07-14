@@ -1,8 +1,15 @@
 'use strict'
 
-const APP_VERSION = '1.5.2'
+const APP_VERSION = '1.5.3'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.5.3',
+    date: '2026-07-14',
+    changes: [
+      '通知件数が多いチャンネルで、通知カードの本文が表示されないことがある不具合を修正',
+    ],
+  },
   {
     version: '1.5.2',
     date: '2026-07-14',
