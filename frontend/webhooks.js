@@ -232,16 +232,30 @@ async function loadApiKeys() {
     for (const key of keys) {
       const li = document.createElement('li')
       li.className = 'api-key-item'
-      li.innerHTML = `
-        <span class="api-key-item-name">${key.name}</span>
-        <span class="api-key-item-prefix">${key.key_prefix}…</span>
-        <button type="button" class="api-key-delete" data-id="${key.id}" title="削除">削除</button>
-      `
-      li.querySelector('.api-key-delete')?.addEventListener('click', async () => {
+
+      const nameEl = document.createElement('span')
+      nameEl.className = 'api-key-item-name'
+      nameEl.textContent = key.name
+
+      const prefixEl = document.createElement('span')
+      prefixEl.className = 'api-key-item-prefix'
+      prefixEl.textContent = `${key.key_prefix}…`
+
+      const deleteBtn = document.createElement('button')
+      deleteBtn.type = 'button'
+      deleteBtn.className = 'api-key-delete'
+      deleteBtn.dataset.id = key.id
+      deleteBtn.title = '削除'
+      deleteBtn.textContent = '削除'
+      deleteBtn.addEventListener('click', async () => {
         if (!confirm(`「${key.name}」を削除しますか？`)) return
         await fetch(apiUrl(`api/keys/${key.id}`), { method: 'DELETE' })
         loadApiKeys()
       })
+
+      li.appendChild(nameEl)
+      li.appendChild(prefixEl)
+      li.appendChild(deleteBtn)
       apiKeyList.appendChild(li)
     }
   } catch {
