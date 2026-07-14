@@ -961,25 +961,26 @@ html, body {
 /* ── Notification card ─────────────────────── */
 
 .notif-card {
+  /* iOS Safari の描画バグ回避: これまで overflow:hidden + border-radius をこの
+     親要素に持たせ、translateZ(0) や will-change で合成レイヤーを強制する対策を
+     繰り返したが解消しなかった。通知件数が多いチャンネルほど再現しやすく、
+     「overflow:hidden な親の中に transform が変化する子要素が多数ある」こと自体が
+     WebKit 側の限界を超えていたと考えられる。角丸・クリップは子要素
+     （.notif-card-content / .swipe-action）側にそれぞれ個別に持たせることで、
+     この親要素はクリップも合成レイヤー強制も行わない構造に変更した。 */
   position: relative;
-  border-radius: 8px;
-  overflow: hidden;
-  /* iOS Safari の描画バグ回避: overflow:hidden + border-radius の親に対し、
-     transition/transform で動く子要素が描画されないことがあるため、
-     合成レイヤーを強制生成する。 */
-  transform: translateZ(0);
 }
 
 /* リアルタイムで1件ずつ届いた通知にのみ付与する入場アニメーション。
    .notif-card の基本ルールに含めていた頃は、チャンネルを開いた際に
-   履歴の全件（未読分含め数十件）へ同時に適用されてしまい、iOS Safari が
-   本文を描画しきれず空白のまま残る不具合の原因になっていたため分離した。 */
+   履歴の全件（未読分含め数十件）へ同時に適用されてしまっていたため分離した。 */
 .notif-card--enter {
   animation: slide-in 0.2s ease;
 }
 
 .notif-card-content {
-  /* .swipe-action（削除アクション）より手前にペイントさせるための position。 */
+  /* .swipe-action（削除アクション）より手前にペイントさせるための position。
+     角丸はこの要素自身が持つ（親の overflow:hidden には頼らない）。 */
   position: relative;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -988,13 +989,10 @@ html, body {
   border-left: 3px solid var(--info);
   transition: transform 0.2s ease;
   touch-action: pan-y;
-  /* iOS Safari の描画バグ回避: スワイプ中は JS が transform を直接書き換えるため、
-     .notif-card 側の translateZ(0) だけでは合成レイヤーが維持されない。
-     この要素自身にも保持させ、スワイプ後に本文が消えたまま戻らない不具合を防ぐ。 */
-  will-change: transform;
 }
 
-/* スワイプで裏に見える削除アクション。.notif-card / .search-result 共通。 */
+/* スワイプで裏に見える削除アクション。.notif-card / .search-result 共通。
+   角丸を自前で持たせ、親要素の overflow:hidden によるクリップに頼らない。 */
 .swipe-action {
   position: absolute;
   inset: 0;
@@ -1002,6 +1000,7 @@ html, body {
   align-items: center;
   justify-content: flex-end;
   padding: 0 20px;
+  border-radius: 8px;
   background: var(--error);
   color: #fff;
   font-size: 13px;
@@ -2022,15 +2021,24 @@ html, body {
   background: var(--surface-hover);
 }
 
-/* ベルマークの通知一覧（スワイプ削除あり）でのみ、iOS Safari の描画バグ回避が必要。
-   検索ダイアログの行はスワイプしないため対象外にし、合成レイヤーを増やさない。 */
+/* ベルマークの通知一覧（スワイプ削除あり）だけは、.search-result-content /
+   .swipe-action 側がそれぞれ角丸を持つため、この親要素はクリップしない
+   （.notif-card と同じ理由。detail は .notif-card のコメントを参照）。
+   検索ダイアログの行はスワイプしないため対象外（従来通り親でクリップ）。 */
 #notifications-list .search-result {
-  transform: translateZ(0);
+  border-radius: 0;
+  overflow: visible;
+  background: none;
+}
+
+#notifications-list .search-result:hover {
+  background: none;
 }
 
 .search-result-content {
   /* .swipe-action（削除アクション）より手前にペイントさせるための position。
-     子要素の絶対配置アンカー用途ではないため削除しないこと。 */
+     子要素の絶対配置アンカー用途ではないため削除しないこと。
+     角丸はこの要素自身が持つ（親の overflow:hidden には頼らない）。 */
   position: relative;
   display: flex;
   align-items: stretch;
@@ -2038,13 +2046,9 @@ html, body {
   flex: 1;
   min-width: 0;
   background: var(--surface);
+  border-radius: 8px;
   transition: transform 0.2s ease;
   touch-action: pan-y;
-  /* iOS Safari の描画バグ回避: このクラスは常にスワイプ削除ありの行にのみ存在する
-     （通常の検索ダイアログでは content = row のため生成されない）。
-     スワイプ中は JS が transform を直接書き換え、親側の translateZ(0) だけでは
-     合成レイヤーが維持されないため、この要素自身にも保持させる。 */
-  will-change: transform;
 }
 
 .search-result:hover .search-result-content {
