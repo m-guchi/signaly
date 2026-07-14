@@ -968,6 +968,13 @@ html, body {
      transition/transform で動く子要素が描画されないことがあるため、
      合成レイヤーを強制生成する。 */
   transform: translateZ(0);
+}
+
+/* リアルタイムで1件ずつ届いた通知にのみ付与する入場アニメーション。
+   .notif-card の基本ルールに含めていた頃は、チャンネルを開いた際に
+   履歴の全件（未読分含め数十件）へ同時に適用されてしまい、iOS Safari が
+   本文を描画しきれず空白のまま残る不具合の原因になっていたため分離した。 */
+.notif-card--enter {
   animation: slide-in 0.2s ease;
 }
 

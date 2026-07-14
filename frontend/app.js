@@ -1186,6 +1186,9 @@ function prependCard(entry, { isNew = false } = {}) {
 
   const dateKey = getDateKey(entry.timestamp)
   const card = createCard(entry, { isNew })
+  // 履歴の一括読み込みでは付与しない（多数のカードが同時にアニメーションし、
+  // iOS Safari で描画が崩れるため）。ライブ受信の1件挿入時のみ付与する。
+  if (isNew) card.classList.add('notif-card--enter')
 
   const next = feed.firstChild
   if (next?.classList.contains('notif-card') && next.dataset.date !== dateKey) {
