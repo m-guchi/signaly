@@ -1,8 +1,15 @@
 'use strict'
 
-const APP_VERSION = '1.5.3'
+const APP_VERSION = '1.5.4'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.5.4',
+    date: '2026-07-14',
+    changes: [
+      '通知カードとベルマークの通知一覧で、本文が表示されないことがある不具合をさらに修正',
+    ],
+  },
   {
     version: '1.5.3',
     date: '2026-07-14',
