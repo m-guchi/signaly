@@ -981,6 +981,10 @@ html, body {
   border-left: 3px solid var(--info);
   transition: transform 0.2s ease;
   touch-action: pan-y;
+  /* iOS Safari の描画バグ回避: スワイプ中は JS が transform を直接書き換えるため、
+     .notif-card 側の translateZ(0) だけでは合成レイヤーが維持されない。
+     この要素自身にも保持させ、スワイプ後に本文が消えたまま戻らない不具合を防ぐ。 */
+  will-change: transform;
 }
 
 /* スワイプで裏に見える削除アクション。.notif-card / .search-result 共通。 */
@@ -2029,6 +2033,11 @@ html, body {
   background: var(--surface);
   transition: transform 0.2s ease;
   touch-action: pan-y;
+  /* iOS Safari の描画バグ回避: このクラスは常にスワイプ削除ありの行にのみ存在する
+     （通常の検索ダイアログでは content = row のため生成されない）。
+     スワイプ中は JS が transform を直接書き換え、親側の translateZ(0) だけでは
+     合成レイヤーが維持されないため、この要素自身にも保持させる。 */
+  will-change: transform;
 }
 
 .search-result:hover .search-result-content {
