@@ -1,8 +1,15 @@
 'use strict'
 
-const APP_VERSION = '1.5.4'
+const APP_VERSION = '1.5.5'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.5.5',
+    date: '2026-07-20',
+    changes: [
+      'Webhook URL画面のチャンネル一覧が崩れて表示されることがある不具合を修正',
+    ],
+  },
   {
     version: '1.5.4',
     date: '2026-07-14',
