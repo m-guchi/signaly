@@ -135,29 +135,13 @@ function renderChannelList(selectName = null) {
   }
 
   for (const group of channelTree.groups) {
-    const header = document.createElement('div')
-    header.className = 'channel-group-header'
-    const label = document.createElement('span')
-    label.className = 'channel-group-label'
-    label.textContent = group.name
-    header.appendChild(label)
-    channelList.appendChild(header)
-    for (const channel of group.channels) {
-      channelList.appendChild(createChannelButton(channel))
-    }
+    channelList.appendChild(createChannelGroupSection(group.name, group.channels))
   }
 
   if (channelTree.ungrouped.length) {
-    const header = document.createElement('div')
-    header.className = 'channel-group-header'
-    const label = document.createElement('span')
-    label.className = 'channel-group-label'
-    label.textContent = '未分類'
-    header.appendChild(label)
-    channelList.appendChild(header)
-    for (const channel of channelTree.ungrouped) {
-      channelList.appendChild(createChannelButton(channel))
-    }
+    const section = createChannelGroupSection('未分類', channelTree.ungrouped)
+    section.classList.add('channel-group--ungrouped')
+    channelList.appendChild(section)
   }
 
   const queryChannel = selectName ?? channelFromQuery()
@@ -168,13 +152,45 @@ function renderChannelList(selectName = null) {
   if (target) selectChannel(target)
 }
 
-function createChannelButton(channel) {
+function createChannelGroupSection(name, channelsInGroup) {
+  const section = document.createElement('section')
+  section.className = 'channel-group'
+
+  const header = document.createElement('div')
+  header.className = 'channel-group-header'
+  const label = document.createElement('span')
+  label.className = 'channel-group-label'
+  label.textContent = name
+  header.appendChild(label)
+  section.appendChild(header)
+
+  const list = document.createElement('div')
+  list.className = 'channel-group-channels'
+  for (const channel of channelsInGroup) {
+    list.appendChild(createChannelRow(channel))
+  }
+  section.appendChild(list)
+
+  return section
+}
+
+function createChannelRow(channel) {
+  const row = document.createElement('div')
+  row.className = 'channel-row'
+
   const btn = document.createElement('button')
+  btn.type = 'button'
   btn.className = 'channel-item'
   btn.dataset.channel = channel.name
-  btn.textContent = channel.name
+
+  const label = document.createElement('span')
+  label.className = 'channel-item-label'
+  label.textContent = channel.name
+  btn.appendChild(label)
+
   btn.addEventListener('click', () => selectChannel(channel.name))
-  return btn
+  row.appendChild(btn)
+  return row
 }
 
 function selectChannel(name) {
