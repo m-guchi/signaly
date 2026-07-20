@@ -1246,6 +1246,14 @@ async def get_webhook_docs():
     return FileResponse(path, media_type="text/markdown; charset=utf-8")
 
 
+@app.get("/docs/api-key.md")
+async def get_api_key_docs():
+    path = DOCS_DIR / "api-key.md"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="マニュアルが見つかりません")
+    return FileResponse(path, media_type="text/markdown; charset=utf-8")
+
+
 # フロントエンドの静的ファイルを最後にマウント
 if FRONTEND_DIR.exists():
     app.mount(

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API キー マニュアル — Signaly</title>
+  <link rel="manifest" href="manifest.json?v=1.5.7">
+  <link rel="icon" href="icon.svg?v=1.5.7" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.5.7">
+  <link rel="stylesheet" href="style.css?v=1.5.7">
+  <meta name="theme-color" content="#000000">
+  <script>(function(){var t=localStorage.getItem('signaly-theme')||'system';document.documentElement.setAttribute('data-theme',t);})();</script>
+</head>
+<body class="docs-body">
+  <header class="docs-header">
+    <a href="./" class="docs-back">← Signaly</a>
+  </header>
+  <main id="docs-content" class="docs-content" aria-live="polite">読み込み中…</main>
+  <script src="markdown.js"></script>
+  <script>
+    const content = document.getElementById('docs-content')
+    fetch('/docs/api-key.md')
+      .then((res) => {
+        if (!res.ok) throw new Error('マニュアルを読み込めませんでした')
+        return res.text()
+      })
+      .then((md) => {
+        content.innerHTML = SignalyMarkdown.parse(md)
+      })
+      .catch((err) => {
+        content.innerHTML = `<p class="docs-error">${err.message}</p>`
+      })
+  </script>
+</body>
+</html>
