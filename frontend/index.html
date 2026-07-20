@@ -6,10 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Cache-Control" content="no-cache">
   <title>Signaly</title>
-  <link rel="manifest" href="manifest.json?v=1.5.5">
-  <link rel="icon" href="icon.svg?v=1.5.5" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.5.5">
-  <link rel="stylesheet" href="style.css?v=1.5.5">
+  <link rel="manifest" href="manifest.json?v=1.5.6">
+  <link rel="icon" href="icon.svg?v=1.5.6" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png?v=1.5.6">
+  <link rel="stylesheet" href="style.css?v=1.5.6">
   <meta name="theme-color" content="#000000">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -265,6 +265,12 @@
             <button id="channel-settings-copy" type="button" class="create-channel-copy" title="コピー">コピー</button>
           </div>
           <p class="create-channel-hint">この URL に POST すると通知が届きます。</p>
+          <p class="create-channel-hint">
+            <a href="https://discord.com/developers/docs/resources/webhook#execute-webhook" target="_blank" rel="noopener noreferrer">Discord Webhook</a> と同じ JSON 形式（<code>content</code> / <code>embeds</code> 等）で POST できます。
+            従来の <code>message</code> / <code>title</code> / <code>level</code> 形式も利用可能です。
+          </p>
+          <p class="create-channel-hint">リクエスト例</p>
+          <pre class="webhooks-example-code"><code id="channel-settings-webhook-example"></code></pre>
         </div>
 
         <div class="channel-settings-actions">
@@ -401,6 +407,24 @@
           </p>
         </section>
 
+        <section class="settings-section" id="settings-api-key-section">
+          <h3 class="settings-section-title">API キー</h3>
+          <p class="settings-doc-hint">スクリプトや CI から <code>/api/*</code> を呼ぶときに使います（Cookie の代わり）。チャンネルに関わらず共通です。</p>
+          <form id="api-key-form" class="api-key-form">
+            <input id="api-key-name" class="create-channel-input" type="text" maxlength="100" placeholder="例: GitHub Actions" required autocomplete="off">
+            <button type="submit" class="create-channel-copy">作成</button>
+          </form>
+          <p id="api-key-error" class="create-channel-error" hidden></p>
+          <div id="api-key-created" class="api-key-created" hidden>
+            <p class="create-channel-hint">このキーは一度だけ表示されます。安全な場所に保存してください。</p>
+            <div class="create-channel-webhook-row">
+              <input id="api-key-created-value" class="create-channel-input create-channel-webhook-input" type="text" readonly>
+              <button id="api-key-created-copy" type="button" class="create-channel-copy" title="コピー">コピー</button>
+            </div>
+          </div>
+          <ul id="api-key-list" class="api-key-list"></ul>
+        </section>
+
         <section class="settings-section">
           <h3 class="settings-section-title">表示テーマ</h3>
           <div class="theme-segment" role="radiogroup" aria-label="表示テーマ">
@@ -500,10 +524,10 @@
     </div>
   </div>
 
-  <script defer src="changelog.js?v=1.5.5"></script>
-  <script defer src="dialog.js?v=1.5.5"></script>
-  <script defer src="reorder.js?v=1.5.5"></script>
-  <script defer src="settings.js?v=1.5.5"></script>
-  <script defer src="app.js?v=1.5.5"></script>
+  <script defer src="changelog.js?v=1.5.6"></script>
+  <script defer src="dialog.js?v=1.5.6"></script>
+  <script defer src="reorder.js?v=1.5.6"></script>
+  <script defer src="settings.js?v=1.5.6"></script>
+  <script defer src="app.js?v=1.5.6"></script>
 </body>
 </html>

@@ -3044,6 +3044,7 @@ const channelSettingsWebhook = document.getElementById('channel-settings-webhook
 const channelSettingsCopy = document.getElementById('channel-settings-copy')
 const channelSettingsRevealWebhook = document.getElementById('channel-settings-reveal-webhook')
 const channelSettingsWebhookSection = document.getElementById('channel-settings-webhook-section')
+const channelSettingsWebhookExample = document.getElementById('channel-settings-webhook-example')
 const channelSettingsDelete = document.getElementById('channel-settings-delete')
 const channelSettingsSelectDelete = document.getElementById('channel-settings-select-delete')
 const channelSettingsNotifSegment = document.getElementById('channel-settings-notif-segment')
@@ -3090,6 +3091,11 @@ function openChannelSettings(channelName) {
   channelSettingsRename.value = channelName
   updateChannelNotifSettingsUI(channel)
   channelSettingsWebhook.value = channel.webhook_url || ''
+  if (channelSettingsWebhookExample) {
+    channelSettingsWebhookExample.textContent = `curl -X POST "${channel.webhook_url || ''}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"content":"デプロイ完了","embeds":[{"title":"v1.2.3","description":"本番に反映しました","color":5763719,"fields":[{"name":"Branch","value":"main","inline":true}]}]}'`
+  }
   channelSettingsError.hidden = true
   hideWebhookSection(channelSettingsRevealWebhook, channelSettingsWebhookSection, channelSettingsCopy, 'URL をコピー')
   closeSidebar()

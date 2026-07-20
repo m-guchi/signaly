@@ -1,8 +1,17 @@
 'use strict'
 
-const APP_VERSION = '1.5.5'
+const APP_VERSION = '1.5.6'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.5.6',
+    date: '2026-07-20',
+    changes: [
+      'APIキーの発行・管理を設定画面（左上の歯車アイコン）からできるようになった',
+      'チャンネル設定画面のWebhook URL欄に、そのままコピーして使えるリクエスト例を追加',
+      '独立していたWebhook URL専用画面を廃止し、設定画面とチャンネル設定に統合',
+    ],
+  },
   {
     version: '1.5.5',
     date: '2026-07-20',

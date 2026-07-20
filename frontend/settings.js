@@ -16,6 +16,7 @@ const SignalySettings = {
     this.setupDialog()
     this.setupChangelog()
     this.renderChangelog()
+    this.setupApiKeySection()
   },
 
   showAuthenticated() {
@@ -138,6 +139,7 @@ const SignalySettings = {
     this.closeSidebar()
     this.closeSettingsChangelog()
     this.renderNotifSettings()
+    this.loadApiKeys()
     SignalyDialog.open(dialog)
     const body = dialog.querySelector('.settings-body')
     if (body) body.scrollTop = 0
@@ -351,6 +353,113 @@ const SignalySettings = {
       messageEl.textContent = '通知がブロックされています。下の手順で端末の設定から許可してください。'
     } else {
       messageEl.textContent = '「通知を許可する」を押すと、端末の確認画面が開きます。'
+    }
+  },
+
+  // ── API キー ───────────────────────────────────────────────────────────────
+
+  setupApiKeySection() {
+    const form = document.getElementById('api-key-form')
+    const nameInput = document.getElementById('api-key-name')
+    const errorEl = document.getElementById('api-key-error')
+    const createdEl = document.getElementById('api-key-created')
+    const createdValueEl = document.getElementById('api-key-created-value')
+    const createdCopyBtn = document.getElementById('api-key-created-copy')
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault()
+      const name = nameInput?.value.trim()
+      if (!name) return
+
+      if (errorEl) errorEl.hidden = true
+      const submitBtn = form.querySelector('button[type="submit"]')
+      submitBtn.disabled = true
+
+      try {
+        const res = await fetch(this.apiUrl('api/keys'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          if (errorEl) {
+            errorEl.textContent = data.detail || '作成に失敗しました'
+            errorEl.hidden = false
+          }
+          return
+        }
+        nameInput.value = ''
+        if (createdEl && createdValueEl) {
+          createdEl.hidden = false
+          createdValueEl.value = data.key
+        }
+        this.loadApiKeys()
+      } catch {
+        if (errorEl) {
+          errorEl.textContent = 'ネットワークエラーが発生しました'
+          errorEl.hidden = false
+        }
+      } finally {
+        submitBtn.disabled = false
+      }
+    })
+
+    createdCopyBtn?.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(createdValueEl.value)
+        createdCopyBtn.textContent = 'コピー済み'
+        setTimeout(() => { createdCopyBtn.textContent = 'コピー' }, 2000)
+      } catch {
+        createdValueEl.select()
+        document.execCommand('copy')
+      }
+    })
+  },
+
+  async loadApiKeys() {
+    const list = document.getElementById('api-key-list')
+    if (!list) return
+    try {
+      const res = await fetch(this.apiUrl('api/keys'))
+      if (!res.ok) return
+      const { keys } = await res.json()
+      list.innerHTML = ''
+      if (!keys.length) {
+        list.innerHTML = '<li class="api-key-empty">API キーはまだありません</li>'
+        return
+      }
+      for (const key of keys) {
+        const li = document.createElement('li')
+        li.className = 'api-key-item'
+
+        const nameEl = document.createElement('span')
+        nameEl.className = 'api-key-item-name'
+        nameEl.textContent = key.name
+
+        const prefixEl = document.createElement('span')
+        prefixEl.className = 'api-key-item-prefix'
+        prefixEl.textContent = `${key.key_prefix}…`
+
+        const deleteBtn = document.createElement('button')
+        deleteBtn.type = 'button'
+        deleteBtn.className = 'api-key-delete'
+        deleteBtn.dataset.id = key.id
+        deleteBtn.title = '削除'
+        deleteBtn.textContent = '削除'
+        deleteBtn.addEventListener('click', async () => {
+          if (!confirm(`「${key.name}」を削除しますか？`)) return
+          await fetch(this.apiUrl(`api/keys/${key.id}`), { method: 'DELETE' })
+          this.loadApiKeys()
+        })
+
+        li.appendChild(nameEl)
+        li.appendChild(prefixEl)
+        li.appendChild(deleteBtn)
+        list.appendChild(li)
+      }
+    } catch {
+      // サイレントに無視
     }
   },
 
