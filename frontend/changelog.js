@@ -1,8 +1,15 @@
 'use strict'
 
-const APP_VERSION = '1.5.6'
+const APP_VERSION = '1.5.7'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.5.7',
+    date: '2026-07-20',
+    changes: [
+      '設定画面のAPIキー欄に、使い方マニュアルへのリンクを追加',
+    ],
+  },
   {
     version: '1.5.6',
     date: '2026-07-20',
