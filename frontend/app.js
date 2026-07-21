@@ -79,6 +79,11 @@ const COLLAPSED_GROUPS_KEY = 'signaly-collapsed-groups'
 const UNGROUPED_SECTION_ID = '__ungrouped__'
 const UNREAD_POLL_MS = 15000
 const NEW_CARD_FADE_MS = 60000
+// 長時間セッションやリアルタイム受信・「もっと読み込む」の繰り返しでカードが
+// 際限なく蓄積し続けないよう、表示件数に上限を設けて古いカードから間引く（#99）。
+// 履歴APIの1ページ200件（最大500件）より十分大きく取り、数回の読み込みでは
+// 間引かれないようにしている。
+const MAX_FEED_CARDS = 600
 
 let activeChannel = null
 let channelsByName = {}
@@ -671,6 +676,26 @@ function removeNotificationCard(id) {
   if (wasSelected && notifSelectMode) updateNotifSelectBar()
 }
 
+// #feed の .notif-card が MAX_FEED_CARDS を超えたら、末尾（最も古い側）から
+// 間引く。サーバー側のデータは消えないため、チャンネルを開き直せば再度表示できる。
+function trimFeedOverflow() {
+  const cards = feed.querySelectorAll('.notif-card')
+  const excess = cards.length - MAX_FEED_CARDS
+  if (excess <= 0) return
+  for (let i = cards.length - excess; i < cards.length; i++) {
+    const card = cards[i]
+    const id = card.dataset.id
+    seenIds.delete(id)
+    selectedNotifIds.delete(id)
+    const dateKey = card.dataset.date
+    card.remove()
+    if (dateKey && !feed.querySelector(`.notif-card[data-date="${CSS.escape(dateKey)}"]`)) {
+      feed.querySelector(`.feed-date-divider[data-date="${CSS.escape(dateKey)}"]`)?.remove()
+    }
+  }
+  if (notifSelectMode) updateNotifSelectBar()
+}
+
 function removeUnreadListRow(id) {
   const row = notificationsListEl?.querySelector(`.search-result[data-id="${CSS.escape(id)}"]`)
   if (!row) return
@@ -1207,6 +1232,7 @@ function prependCard(entry, { isNew = false } = {}) {
     scheduleNewCardFade(card)
   }
   updateStickyFeedDate()
+  trimFeedOverflow()
 }
 
 // ── Channel list ─────────────────────────────────────────────────────────────
@@ -1846,6 +1872,7 @@ async function loadMoreHistory(channelName, wrap, btn) {
       feed.insertBefore(card, wrap)
       prevDateKey = dateKey
     }
+    trimFeedOverflow()
 
     if (logs.length) {
       const last = logs[logs.length - 1]

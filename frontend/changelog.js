@@ -1,8 +1,15 @@
 'use strict'
 
-const APP_VERSION = '1.5.7'
+const APP_VERSION = '1.5.8'
 
 const APP_CHANGELOG = [
+  {
+    version: '1.5.8',
+    date: '2026-07-21',
+    changes: [
+      '通知フィードの表示件数に上限を設け、長時間の利用や「もっと読み込む」の繰り返しでカードが際限なく蓄積しないようにした',
+    ],
+  },
   {
     version: '1.5.7',
     date: '2026-07-20',
